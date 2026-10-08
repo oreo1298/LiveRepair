@@ -38,7 +38,8 @@ so the USB drive can be removed after booting.
   repositories carry all of their dependencies at current versions.
 - **LXQt** on X11: a light desktop built on the same Qt 6 libraries as the programs.
   Launchers for the programs are on the desktop, in the panel and in the menu.
-- File manager, terminal, text editor, the Falkon web browser, and NetworkManager (tray icon).
+- File manager, terminal, text editor, the Falkon web browser, and NetworkManager: wired
+  networks connect by themselves, and "Network Connections" in the panel sets up Wi-Fi.
 - Repair tools: GPT fdisk, parted, TestDisk/PhotoRec, cryptsetup, LVM, hdparm, efibootmgr.
 - **Disks are never mounted automatically**, so a failing disk is only read when you ask, and
   nothing is in use when you clone it or write to it. The `diskhealthd` service runs so that

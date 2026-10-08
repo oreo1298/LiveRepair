@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Network Connections
+GenericName=Wi-Fi and network setup
+Comment=Connect to a Wi-Fi network or change network settings (NetworkManager)
+Icon=network-wireless
+Exec=qterminal -e nmtui
+Terminal=false
+Categories=Network;Settings;

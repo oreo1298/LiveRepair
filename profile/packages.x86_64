@@ -86,9 +86,8 @@ breeze-icons
 ttf-dejavu
 xdg-utils
 
-# ---- Networking
+# ---- Networking (Wi-Fi setup: "Network Connections" in the panel runs nmtui)
 networkmanager
-nm-tray
 openssh
 
 # ---- Disk, boot and hardware tools

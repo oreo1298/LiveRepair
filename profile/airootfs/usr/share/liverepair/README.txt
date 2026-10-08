@@ -21,6 +21,7 @@ Programs (desktop, panel and the application menu):
   PC Insurance Report    PDF insurance damage reports for computer repairs.
 
 Also included: file manager, terminal, Falkon web browser, text editor,
+"Network Connections" (Wi-Fi setup; wired networks connect by themselves),
 GPT fdisk, parted, TestDisk/PhotoRec, cryptsetup, LVM, smartctl, nvme-cli,
 Memtest86+ (boot menu).
 

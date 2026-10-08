@@ -58,7 +58,7 @@ check virtconvert-doctor virtconvert doctor
 # command line tools that the applications call
 for tool in ddrescue partclone.ext4 partclone.ntfs rsync smartctl fio nvme qemu-img wimlib-imagex \
             xorriso cdrdao mkisofs growisofs mkudffs grub-install ntfs-3g mkntfs mkfs.exfat mkfs.fat \
-            mkfs.btrfs mkfs.xfs mkfs.ext4 udisksctl pkexec sgdisk parted testdisk zstd; do
+            mkfs.btrfs mkfs.xfs mkfs.ext4 udisksctl pkexec sgdisk parted testdisk zstd nmtui; do
     if command -v "$tool" >/dev/null; then pass "tool $tool"; else fail "tool $tool missing"; fi
 done
 check python-modules python3 -c 'import PySide6.QtWidgets, PySide6.QtSvg, PySide6.QtPdf, PyQt6.QtWidgets, reportlab, PIL, zstandard'
