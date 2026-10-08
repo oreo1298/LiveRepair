@@ -1,0 +1,22 @@
+name: diag-qtpdf
+on: push
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Versions and QtPdf import
+        shell: bash
+        run: |
+          pacman-key --init >/dev/null 2>&1; pacman-key --populate archlinux >/dev/null 2>&1
+          pacman -Syu --noconfirm >/dev/null 2>&1
+          echo "== extra"; pacman -Si pyside6 shiboken6 qt6-base qt6-webengine | grep -E "^(Repository|Name|Version|Build Date)" || true
+          pacman -S --noconfirm --needed pyside6 qt6-webengine python >/dev/null 2>&1
+          python -c "import PySide6.QtPdf; print('QtPdf import OK')" || echo "QtPdf import FAILED"
+          printf '\n[extra-testing]\nInclude = /etc/pacman.d/mirrorlist\n[core-testing]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
+          pacman -Sy >/dev/null 2>&1
+          echo "== testing"; pacman -Sl extra-testing core-testing | grep -E " (pyside6|shiboken6|qt6-base|qt6-webengine|python) " || echo "none in testing"
+          echo "== archive pyside6"; curl -s https://archive.archlinux.org/packages/p/pyside6/ | grep -oE 'pyside6-[0-9][^"]*x86_64\.pkg\.tar\.zst"' | tr -d '"' | tail -6
+          echo "== archive qt6-webengine"; curl -s https://archive.archlinux.org/packages/q/qt6-webengine/ | grep -oE 'qt6-webengine-[0-9][^"]*x86_64\.pkg\.tar\.zst"' | tr -d '"' | tail -6
+          echo "== archive qt6-base"; curl -s https://archive.archlinux.org/packages/q/qt6-base/ | grep -oE 'qt6-base-[0-9][^"]*x86_64\.pkg\.tar\.zst"' | tr -d '"' | tail -4
+          echo "== pyside6 packaging commits"; curl -s "https://gitlab.archlinux.org/api/v4/projects/archlinux%2Fpackaging%2Fpackages%2Fpyside6/repository/commits?per_page=6" | python -c "import json,sys; [print(c['created_at'][:10], c['title']) for c in json.load(sys.stdin)]" || true
