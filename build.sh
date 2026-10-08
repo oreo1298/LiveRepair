@@ -2,10 +2,11 @@
 # Build the LiveRepair ISO.
 #
 # Runs as root on Arch Linux (or in an Arch Linux container: scripts/build-in-docker.sh).
-#   1. builds the six applications into pacman packages with their own PKGBUILDs,
+#   1. builds the applications into pacman packages with their own PKGBUILDs,
 #      from the default branch of their GitHub repositories
 #   2. puts the packages in a local pacman repository
 #   3. builds the ISO from profile/ with mkarchiso, with that repository added
+#   4. checks that the ISO fits on a single-layer DVD
 #
 # Environment:
 #   OUT_DIR    where the ISO goes (default: ./out)
@@ -24,13 +25,17 @@ export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(date +%s)}
 
 # repository           package             directory of its PKGBUILD
 apps=(
-    "ImgBurnLinux       linburn             packaging/arch/local"
     "CloneAndRecover    cloneandrecover     ."
-    "VirtConvert        virtconvert         ."
-    "PCInsuranceReport  pcinsurancereport   packaging/arch"
+    "RecoverAll         recoverall          ."
     "DiskHealth         diskhealth          ."
+    "TM5Linux           tm5linux            packaging/arch"
+    "FastCopyLinux      fastcopy-linux-git  packaging/arch"
+    "ImgBurnLinux       linburn             packaging/arch/local"
     "WindowsUSBLinux    rufux               ."
+    "VirtConvert        virtconvert         ."
 )
+# A single-layer DVD±R holds 4,700,372,992 bytes
+dvd_size=4700372992
 
 msg() { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -69,8 +74,9 @@ for app in "${apps[@]}"; do
     fi
     chown -R builder: "$src_dir/$repo"
 
+    # FASTCOPY_SOURCE: FastCopyLinux's PKGBUILD clones its sources itself; build this checkout
     (cd "$src_dir/$repo/$pkgbuild_dir" &&
-        runuser -u builder -- env PKGDEST="$pkg_dir" \
+        runuser -u builder -- env PKGDEST="$pkg_dir" FASTCOPY_SOURCE="git+file://$src_dir/$repo" \
             makepkg --force --nodeps --nocheck --noconfirm)
 
     pkg=$(find "$pkg_dir" -name "$pkgname-*.pkg.tar.zst" | head -n1)
@@ -115,4 +121,8 @@ pkglist=$work_dir/mkarchiso/iso/arch/pkglist.x86_64.txt
 (cd "$out_dir" && sha256sum "$(basename "$iso")" >"$(basename "$iso").sha256")
 [[ ${KEEP_WORK-} == 1 ]] || rm -rf "$work_dir/mkarchiso"
 
-msg "Done: $iso ($(du -h "$iso" | cut -f1))"
+size=$(stat -c %s "$iso")
+(( size <= dvd_size )) ||
+    die "$(basename "$iso") is $size bytes, too big for a single-layer DVD ($dvd_size bytes)"
+
+msg "Done: $iso ($(numfmt --to=iec --suffix=B "$size"), fits on a DVD)"

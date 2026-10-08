@@ -1,11 +1,28 @@
 #!/bin/bash
 # LiveRepair self-test, used by the ISO's CI boot test. Started by the LXQt session
-# (/etc/xdg/autostart), it does nothing unless the kernel command line has
-# "liverepair.selftest". It reports on the first serial port:
-#   LIVEREPAIR-SELFTEST: PASS|FAIL <check>   one line per check
-#   LIVEREPAIR-SHOT <name>                   a window is open; the host may take a screenshot
-#   LIVEREPAIR-SELFTEST: RESULT PASS|FAIL    the end
-grep -qw liverepair.selftest /proc/cmdline || exit 0
+# (/etc/xdg/autostart), it does nothing unless it is asked for, either by QEMU
+# (-fw_cfg name=opt/liverepair/selftest,string=MODE) or on the kernel command line
+# (liverepair.selftest or liverepair.selftest=MODE). MODE is:
+#   boot   the desktop, the theme and the boot medium (DVD, copy to RAM)
+#   full   that, and every application, its tools and services (the default)
+# It reports on the first serial port:
+#   LIVEREPAIR-SELFTEST: PASS|FAIL|INFO ...   one line per check
+#   LIVEREPAIR-SHOT <name>                    a window is open; the host may take a screenshot
+#   LIVEREPAIR-SELFTEST: RESULT PASS|FAIL     the end
+
+mode=""
+for arg in $(</proc/cmdline); do
+    case $arg in
+        liverepair.selftest) mode=full ;;
+        liverepair.selftest=*) mode=${arg#*=} ;;
+    esac
+done
+if [[ -z $mode ]] && systemd-detect-virt --quiet --vm; then
+    cfg=/sys/firmware/qemu_fw_cfg/by_name/opt/liverepair/selftest/raw
+    [[ -e $cfg ]] || sudo modprobe qemu_fw_cfg 2>/dev/null
+    [[ -e $cfg ]] && mode=$(sudo cat "$cfg" | tr -d '\0\n')
+fi
+[[ -n $mode ]] || exit 0
 
 failures=0
 log=/tmp/liverepair-selftest
@@ -42,66 +59,97 @@ gui() {  # gui <name> <command...>: passes if the program is still running after
     wait "$pid" 2>/dev/null
 }
 
-say "START $(tr '\n' ' ' </etc/liverepair-release 2>/dev/null)"
+say "START mode=$mode $(tr '\n' ' ' </etc/liverepair-release 2>/dev/null)"
 sleep 15                     # let the panel and the desktop settle
+
+# ---- the boot: firmware, boot medium, desktop and theme
+if [[ -d /sys/firmware/efi ]]; then say "INFO firmware UEFI"; else say "INFO firmware BIOS"; fi
+say "INFO boot medium: $(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null || echo 'not mounted')"
+say "INFO kernel command line: $(</proc/cmdline)"
+if grep -qw copytoram=y /proc/cmdline; then
+    # the system runs from RAM and the disc is no longer in use, so the drive can burn discs
+    check copytoram-image test -s /run/archiso/copytoram/airootfs.sfs
+    check boot-medium-released sh -c '! mountpoint -q /run/archiso/bootmnt'
+fi
+check session-panel pgrep -u "$USER" -x lxqt-panel
+check session-desktop pgrep -u "$USER" -f 'pcmanfm-qt --desktop'
+check theme-arch-colors grep -qx 'theme=Arch-Colors' "$HOME/.config/lxqt/lxqt.conf"
+check theme-installed test -d /usr/share/lxqt/themes/Arch-Colors
+check theme-wallpaper test -s /usr/share/lxqt/wallpapers/plasma_arch.png
 shot desktop
 
-# the applications' own checks of what they need
-for doctor in "cnrctl doctor" "diskctl doctor" "virtconvert doctor"; do
-    $doctor >"$log/doctor.out" 2>&1
-    rc=$?
-    say "INFO $doctor (exit $rc):"
-    dump "$log/doctor.out"
-done
-check virtconvert-doctor virtconvert doctor
+if [[ $mode == full ]]; then
+    # the applications' own checks of what they need
+    for doctor in "cnrctl doctor" "recoverctl doctor" "diskctl doctor" "virtconvert doctor"; do
+        $doctor >"$log/doctor.out" 2>&1
+        rc=$?
+        say "INFO $doctor (exit $rc):"
+        dump "$log/doctor.out"
+    done
+    check virtconvert-doctor virtconvert doctor
 
-# command line tools that the applications call
-for tool in ddrescue partclone.ext4 partclone.ntfs rsync smartctl fio nvme qemu-img wimlib-imagex \
-            xorriso cdrdao mkisofs growisofs mkudffs grub-install ntfs-3g mkntfs mkfs.exfat mkfs.fat \
-            mkfs.btrfs mkfs.xfs mkfs.ext4 udisksctl pkexec sgdisk parted testdisk zstd nmtui; do
-    if command -v "$tool" >/dev/null; then pass "tool $tool"; else fail "tool $tool missing"; fi
-done
-check python-modules python3 -c 'import PySide6.QtWidgets, PySide6.QtSvg, PySide6.QtPdf, PyQt6.QtWidgets, reportlab, PIL, zstandard'
-check rufux-uefi-ntfs test -s /usr/share/rufux/uefi-ntfs.img
+    # command line tools of the applications and the tools they call
+    for tool in cnrctl recoverctl diskctl tm5linux-cli fastcopy-linux virtconvert linburn rufux firefox \
+                ddrescue partclone.ext4 partclone.ntfs rsync smartctl fio nvme qemu-img wimlib-imagex \
+                xorriso cdrdao mkisofs growisofs mkudffs grub-install ntfs-3g mkntfs mkfs.exfat mkfs.fat \
+                mkfs.btrfs mkfs.xfs mkfs.ext4 fls mdadm cryptsetup fsck.f2fs fsck.jfs udisksctl pkexec \
+                sgdisk parted testdisk zstd nmtui; do
+        if command -v "$tool" >/dev/null; then pass "tool $tool"; else fail "tool $tool missing"; fi
+    done
+    check python-modules python3 -c '
+import PySide6.QtWidgets, PySide6.QtSvg, PyQt6.QtWidgets, zstandard, xxhash, gi
+gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")
+from gi.repository import Gtk, Adw'
+    check rufux-uefi-ntfs test -s /usr/share/rufux/uefi-ntfs.img
+    check tm5-memory-lock sh -c 'getcap /usr/bin/tm5linux-cli | grep -q cap_ipc_lock'
 
-# services, privileges and disks
-check service-diskhealthd systemctl is-active --quiet diskhealthd.service
-check service-networkmanager systemctl is-active --quiet NetworkManager.service
-check polkit-no-password pkexec --disable-internal-agent /usr/bin/true
-check sudo-no-password sudo -n true
-check udisks-no-password udisksctl status
-check no-automount sh -c '! findmnt -rno SOURCE | grep -q "^/dev/[sv]d"'
-check cnrctl-list cnrctl list
-dump "$log/cnrctl-list.out"
-check diskctl-list diskctl list
-dump "$log/diskctl-list.out"
-check virtconvert-disks virtconvert disks
-dump "$log/virtconvert-disks.out"
+    # services, privileges and disks
+    check service-diskhealthd systemctl is-active --quiet diskhealthd.service
+    check service-networkmanager systemctl is-active --quiet NetworkManager.service
+    check polkit-no-password pkexec --disable-internal-agent /usr/bin/true
+    check sudo-no-password sudo -n true
+    check udisks udisksctl status
+    check no-automount sh -c '! findmnt -rno SOURCE | grep -q "^/dev/[sv]d"'
+    for list in "cnrctl list" "recoverctl list" "diskctl list" "virtconvert disks"; do
+        # shellcheck disable=SC2086  # "$list" is a command and its argument
+        check "${list// /-}" $list
+        dump "$log/${list// /-}.out"
+    done
 
-# a real conversion: raw -> VHDX -> VDI, then compare with the original
-work=$(mktemp -d)
-if qemu-img create -q -f raw "$work/disk.raw" 64M &&
-   printf 'LiveRepair self-test\n' | dd of="$work/disk.raw" bs=1 seek=1048576 conv=notrunc status=none &&
-   virtconvert convert -q -y -t vhdx -o "$work/disk.vhdx" "$work/disk.raw" >"$log/convert.out" 2>&1 &&
-   virtconvert convert -q -y -t vdi -o "$work/disk.vdi" "$work/disk.vhdx" >>"$log/convert.out" 2>&1 &&
-   qemu-img compare -q "$work/disk.raw" "$work/disk.vdi" >>"$log/convert.out" 2>&1; then
-    pass "virtconvert raw->vhdx->vdi"
-else
-    fail "virtconvert raw->vhdx->vdi"
-    dump "$log/convert.out"
+    # real work: a TM5 engine self-test, a verified FastCopy copy, and a VirtConvert conversion
+    check tm5-engine-selftest tm5linux-cli --selftest
+    work=$(mktemp -d)
+    mkdir -p "$work/src/sub" "$work/dst"
+    head -c 3M /dev/urandom >"$work/src/a.bin"
+    echo "LiveRepair self-test" >"$work/src/sub/b.txt"
+    check fastcopy-verified-copy sh -c "fastcopy-linux --no-ui --quiet --verify --cmd=force_copy \
+        '$work/src/' --to '$work/dst' && diff -r '$work/src' '$work/dst'"
+    if qemu-img create -q -f raw "$work/disk.raw" 64M &&
+       printf 'LiveRepair self-test\n' | dd of="$work/disk.raw" bs=1 seek=1048576 conv=notrunc status=none &&
+       virtconvert convert -q -y -t vhdx -o "$work/disk.vhdx" "$work/disk.raw" >"$log/convert.out" 2>&1 &&
+       virtconvert convert -q -y -t vdi -o "$work/disk.vdi" "$work/disk.vhdx" >>"$log/convert.out" 2>&1 &&
+       qemu-img compare -q "$work/disk.raw" "$work/disk.vdi" >>"$log/convert.out" 2>&1; then
+        pass "virtconvert raw->vhdx->vdi"
+    else
+        fail "virtconvert raw->vhdx->vdi"
+        dump "$log/convert.out"
+    fi
+    rm -rf "$work"
+
+    # the desktop launchers and the applications' windows
+    for app in CloneAndRecover RecoverAll DiskHealth TM5Linux FastCopyLinux LinBurn Rufux VirtConvert; do
+        check "launcher-$app" test -x "$HOME/Desktop/io.github.oreo1298.$app.desktop"
+    done
+    gui cloneandrecover cloneandrecover
+    gui recoverall recoverall
+    gui diskhealth diskhealth
+    gui tm5linux tm5linux
+    gui fastcopy-linux fastcopy-linux
+    gui linburn linburn
+    gui rufux rufux
+    gui virtconvert virtconvert
+    gui firefox firefox --new-instance about:blank
 fi
-rm -rf "$work"
-
-# the desktop launchers and the applications' windows
-for id in CloneAndRecover DiskHealth LinBurn Rufux VirtConvert PCInsuranceReport; do
-    check "launcher-$id" test -x "$HOME/Desktop/io.github.oreo1298.$id.desktop"
-done
-gui cloneandrecover cloneandrecover
-gui diskhealth diskhealth
-gui linburn linburn
-gui rufux rufux
-gui virtconvert virtconvert
-gui pcinsurancereport pcinsurancereport
 
 if (( failures == 0 )); then
     say "RESULT PASS"

@@ -1,97 +1,125 @@
 # LiveRepair
 
-A lightweight live ISO for repairing, cloning and checking computers, with these programs
-preinstalled and ready to use:
+A lightweight live ISO for repairing, recovering, cloning and checking computers, with these
+programs preinstalled and ready to use:
 
 | Program | Repository | What it does |
 |---|---|---|
 | **CloneAndRecover** | [CloneAndRecover](https://github.com/oreo1298/CloneAndRecover) | Clone disks (also to smaller ones), image and restore them, rescue failing disks with GNU ddrescue |
+| **RecoverAll** | [RecoverAll](https://github.com/oreo1298/RecoverAll) | Recover deleted files, lost partitions and photos; repair and image disks |
 | **DiskHealth** | [DiskHealth](https://github.com/oreo1298/DiskHealth) | S.M.A.R.T., health, benchmarks and surface tests for HDDs, SSDs, NVMe and flash drives |
+| **TM5 for Linux** | [TM5Linux](https://github.com/oreo1298/TM5Linux) | RAM stability test with TestMem5 configs (Extreme1 by anta777 and others) |
+| **FastCopy Linux** | [FastCopyLinux](https://github.com/oreo1298/FastCopyLinux) | Fast file copy, sync, move and delete with verification |
 | **LinBurn** | [ImgBurnLinux](https://github.com/oreo1298/ImgBurnLinux) | ImgBurn-style CD/DVD/Blu-ray burning, reading, building and verifying |
 | **Rufux** | [WindowsUSBLinux](https://github.com/oreo1298/WindowsUSBLinux) | Rufus-style bootable USB drives from Windows and Linux images |
 | **VirtConvert&Create** | [VirtConvert](https://github.com/oreo1298/VirtConvert) | Convert and create virtual disks (VDI, VMDK, VHD, VHDX, QCOW2, OVA) |
-| **PC Insurance Report** | [PCInsuranceReport](https://github.com/oreo1298/PCInsuranceReport) | PDF insurance damage reports for computer repairs |
 
-Every prerequisite is included: Qt 6 with PySide6 and PyQt6, ddrescue, partclone, smartmontools,
-fio, nvme-cli, qemu-img, wimlib, xorriso, cdrdao, cdrtools, dvd+rw-tools, GRUB, the Rufus UEFI:NTFS
-image, ReportLab, Pillow, and the tools for FAT, exFAT, NTFS, ext4, Btrfs, XFS and UDF.
+Every prerequisite is included: Qt 6 with PySide6 and PyQt6, GTK 4 with libadwaita and PyGObject,
+ddrescue, partclone, sleuthkit, smartmontools, fio, nvme-cli, qemu-img, wimlib, xorriso, cdrdao,
+cdrtools, dvd+rw-tools, GRUB, the Rufus UEFI:NTFS image, mdadm, cryptsetup, xxHash, and the tools
+for FAT, exFAT, NTFS, ext4, Btrfs, XFS, F2FS, JFS and UDF. **Firefox** is included too.
 
-## Download
+## Build the ISO
 
-Get the ISO from [Releases](https://github.com/oreo1298/LiveRepair/releases/latest), then:
+The ISO is built from the latest version of each program (the default branch of each repository)
+whenever you build it. It needs about 10 GB of free disk space and an internet connection.
 
-1. Write it to a USB drive with Rufux, Rufus (DD mode), balenaEtcher or Ventoy, or with
-   `sudo dd if=liverepair-*.iso of=/dev/sdX bs=4M status=progress oflag=sync`. It also burns to a DVD.
-2. Boot from it, UEFI or legacy BIOS. **Turn Secure Boot off** first: the ISO is not signed.
+On Arch Linux (or an Arch-based distribution), as root:
 
-The LXQt desktop starts on its own. The user is `live`, without a password; `sudo` and the
-programs' administrator actions (cloning, formatting, S.M.A.R.T.) work without asking for one.
+```sh
+git clone https://github.com/oreo1298/LiveRepair.git
+cd LiveRepair
+sudo ./build.sh
+```
 
-The boot menu also offers a *safe graphics* mode (`nomodeset`) for machines whose screen stays
-black, and Memtest86+ for testing memory. With enough RAM the system copies itself to memory,
-so the USB drive can be removed after booting.
+On any other Linux, with Docker or Podman (the build runs in an Arch Linux container):
+
+```sh
+git clone https://github.com/oreo1298/LiveRepair.git
+cd LiveRepair
+sudo scripts/build-in-docker.sh
+```
+
+The ISO lands in `out/` (`liverepair-YYYY.MM.DD-x86_64.iso`, about 1.5 GB), with its SHA-256
+checksum and a list of the programs and packages in it. The build stops with an error if the ISO
+would not fit on a single-layer DVD (4.7 GB).
+
+To build a program from your own checkout instead of GitHub, set `APP_SRC_<Repository>`, for
+example `sudo APP_SRC_DiskHealth=~/src/DiskHealth ./build.sh`.
+
+## Put it on a DVD or USB drive
+
+- **DVD**: burn the ISO as a disc image with LinBurn, ImgBurn, Brasero or K3b, or from a terminal:
+  `growisofs -dvd-compat -Z /dev/sr0=liverepair-*.iso` (or `xorriso -as cdrecord -v dev=/dev/sr0
+  -eject liverepair-*.iso`). The disc boots with UEFI and with legacy BIOS.
+- **USB drive**: write it with Rufux, Rufus (DD mode), balenaEtcher or Ventoy, or with
+  `sudo dd if=liverepair-*.iso of=/dev/sdX bs=4M status=progress oflag=sync`.
+
+Then boot from it. **Turn Secure Boot off** first: the ISO is not signed.
+
+## Using it
+
+The LXQt desktop starts on its own, with the **Arch-Colors** theme and its wallpaper. The user is
+`live`, without a password; `sudo` and the programs' administrator actions (cloning, recovery,
+formatting, S.M.A.R.T.) work without asking for one. Launchers for the programs are on the
+desktop, in the panel and in the menu.
+
+The boot menu offers:
+
+- **LiveRepair**: the normal start. From a USB drive, the system copies itself to RAM when there
+  is enough memory, so the drive can be removed.
+- **copy to RAM (frees the DVD drive)**: copies the system to RAM before starting (4 GB of RAM
+  or more), then lets go of the disc, so you can take the DVD out and burn other discs with LinBurn.
+- **safe graphics** (`nomodeset`), for machines whose screen stays black or garbled.
+- **Memtest86+**, for testing memory before the system starts.
+
+Good to know:
+
+- **Disks are never mounted automatically**, and Linux software-RAID members are never assembled
+  on their own, so a failing disk is only read when you ask, and nothing is in use when you clone,
+  recover or write to it. Mount disks from the file manager when you need to.
+- Wired networks connect by themselves; "Network Connections" in the panel sets up Wi-Fi.
+- Files saved in the live system are lost when it shuts down: save images, recovered files and
+  reports to a real disk or USB drive.
+- `/etc/liverepair-release` lists the version and commit of each program in the ISO.
 
 ## What is in the live system
 
-- **Arch Linux** with the latest kernel and the common GPU, Wi-Fi and Ethernet firmware.
-  Arch was chosen because every program above already ships an Arch PKGBUILD, and Arch's
-  repositories carry all of their dependencies at current versions.
-- **LXQt** on X11: a light desktop built on the same Qt 6 libraries as the programs.
-  Launchers for the programs are on the desktop, in the panel and in the menu.
-- File manager, terminal, text editor, the Falkon web browser, and NetworkManager: wired
-  networks connect by themselves, and "Network Connections" in the panel sets up Wi-Fi.
-- Repair tools: GPT fdisk, parted, TestDisk/PhotoRec, cryptsetup, LVM, hdparm, efibootmgr.
-- **Disks are never mounted automatically**, so a failing disk is only read when you ask, and
-  nothing is in use when you clone it or write to it. The `diskhealthd` service runs so that
-  DiskHealth can read S.M.A.R.T. data right away.
+- **Arch Linux** with the latest kernel and the common GPU, Wi-Fi and Ethernet firmware. Every
+  program above ships an Arch PKGBUILD, and Arch's repositories carry all of their dependencies.
+- **LXQt** on X11, a light Qt 6 desktop, with the file manager, terminal and text editor.
+- **Firefox**, NetworkManager, and repair tools: GPT fdisk, parted, TestDisk/PhotoRec, cryptsetup,
+  LVM, mdadm, hdparm, efibootmgr.
+- The `diskhealthd` service runs, so DiskHealth reads S.M.A.R.T. data right away.
 
-`/etc/liverepair-release` in the live system lists the version and commit of each program.
-
-## How it is built
+## How it is built and tested
 
 [`build.sh`](build.sh) builds each program into a pacman package with the PKGBUILD from its own
-repository (default branch), adds them to a local package repository, and runs `mkarchiso` on
-the [`profile/`](profile) directory (based on archiso's `releng` profile).
+repository, adds the packages to a local package repository, and runs `mkarchiso` on the
+[`profile/`](profile) directory (based on archiso's `releng` profile).
 
-The [Build ISO](.github/workflows/build-iso.yml) workflow runs this in an Arch Linux container,
-then boots the ISO in QEMU three times: once with a self-test that checks every program and its
-tools, services and passwordless admin access, takes a screenshot of each program's window, and
-converts a disk image with VirtConvert; and once each with UEFI and BIOS firmware as a user would
-boot it. The screenshots are kept as the run's `boot-test-results` artifact.
+[`scripts/qemu-test.sh`](scripts/qemu-test.sh) boots the ISO in QEMU from an emulated DVD drive:
 
-To publish a new ISO with the latest version of every program: **Actions → Build ISO → Run
-workflow**. The release is tagged with the build date (`v2026.10.08`, then `v2026.10.08-2`, …).
-
-### Building it yourself
-
-On Arch Linux, as root (about 10 GB of free space):
+1. with UEFI firmware, running a self-test that checks every program, its tools, services and
+   passwordless admin access, does real work with them (a TM5 engine self-test, a verified
+   FastCopy copy, a VirtConvert conversion), and takes a screenshot of each program's window;
+2. with BIOS firmware, choosing *copy to RAM* in the boot menu, and checking the desktop, the
+   theme, and that the DVD is no longer in use.
 
 ```sh
-sudo ./build.sh                       # ISO in ./out
+scripts/qemu-test.sh out/liverepair-*.iso test-results     # uses KVM when available
 ```
 
-On any other Linux with Docker or Podman:
-
-```sh
-sudo scripts/build-in-docker.sh       # ISO in ./out
-```
-
-Build a program from a local checkout instead of GitHub with `APP_SRC_<Repository>=/path`, for
-example `sudo APP_SRC_DiskHealth=~/src/DiskHealth ./build.sh`.
-
-Boot-test the result (uses KVM when available):
-
-```sh
-scripts/qemu-test.sh out/liverepair-*.iso test-results
-```
+The [Build ISO](.github/workflows/build-iso.yml) workflow does both on every push. It publishes
+nothing; the ISO and the screenshots are kept for a few days as the run's artifacts.
 
 ### Changing the ISO
 
-- Packages: [`profile/packages.x86_64`](profile/packages.x86_64)
-- Desktop defaults (panel, file manager, session): [`profile/airootfs/etc/skel`](profile/airootfs/etc/skel)
+- Programs: the `apps` list at the top of [`build.sh`](build.sh), plus the package name in
+  [`profile/packages.x86_64`](profile/packages.x86_64)
+- Other packages: [`profile/packages.x86_64`](profile/packages.x86_64)
+- Desktop defaults (theme, panel, file manager, session): [`profile/airootfs/etc/skel`](profile/airootfs/etc/skel)
 - The live user, autologin and permissions: [`profile/airootfs`](profile/airootfs)
   (`usr/local/bin/liverepair-mkuser`, `etc/polkit-1/rules.d`, `etc/sudoers.d`)
 - Boot menus: [`profile/efiboot`](profile/efiboot) (UEFI), [`profile/syslinux`](profile/syslinux) (BIOS)
-- Wallpaper and boot splash: [`tools/make-artwork.py`](tools/make-artwork.py)
-- Adding another program: an entry in the `apps` list at the top of [`build.sh`](build.sh) and its
-  package name in `packages.x86_64`.
+- BIOS boot menu background: [`tools/make-artwork.py`](tools/make-artwork.py)

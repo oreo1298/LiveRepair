@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Draw the LiveRepair wallpaper and the syslinux boot menu splash (needs Pillow and DejaVu fonts).
+"""Draw the syslinux (BIOS) boot menu splash (needs Pillow and DejaVu fonts).
+
+The desktop uses the wallpaper of LXQt's Arch-Colors theme.
 
     python3 tools/make-artwork.py
 """
@@ -40,23 +42,6 @@ def wrench(draw, cx, cy, s, color, h):
     draw.polygon([(hx, hy), (hx + r * 1.4, hy - r * 0.2), (hx + r * 0.2, hy - r * 1.4)], fill=background(round(hy), h))
 
 
-def wallpaper():
-    w, h = 1920, 1080
-    img = gradient(w, h)
-    d = ImageDraw.Draw(img)
-    title = ImageFont.truetype(FONT, 96)
-    sub = ImageFont.truetype(FONT_REGULAR, 30)
-    tagline = "clone · recover · check · burn · boot"
-    text_w = max(d.textlength("LiveRepair", font=title), d.textlength(tagline, font=sub))
-    x = w - 160 - text_w           # right-aligned, clear of the desktop icons on the left
-    wrench(d, x - 110, 470, 70, ACCENT, h)
-    d.text((x, 470), "LiveRepair", font=title, fill=(235, 240, 245), anchor="lm")
-    d.text((x + 2, 560), tagline, font=sub, fill=(150, 165, 180), anchor="lm")
-    out = ROOT / "profile/airootfs/usr/share/backgrounds/liverepair/wallpaper.png"
-    img.quantize(colors=128, method=Image.Quantize.MEDIANCUT).save(out, optimize=True)
-    print(out, out.stat().st_size)
-
-
 def splash():
     w, h = 640, 480
     img = gradient(w, h)
@@ -69,5 +54,4 @@ def splash():
 
 
 if __name__ == "__main__":
-    wallpaper()
     splash()

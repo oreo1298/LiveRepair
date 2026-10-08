@@ -30,12 +30,14 @@ linux-firmware-realtek
 wireless-regdb
 
 # ---- The LiveRepair applications, built from github.com/oreo1298
-linburn
 cloneandrecover
+recoverall
 diskhealth
-virtconvert
-pcinsurancereport
+tm5linux
+fastcopy-linux-git
+linburn
 rufux
+virtconvert
 
 # ---- Optional dependencies of the applications
 # LinBurn (ImgBurnLinux): audio CDs and BIN/CUE, mkisofs, DVD layer break, UDF
@@ -49,6 +51,14 @@ exfatprogs
 btrfs-progs
 xfsprogs
 smartmontools
+# RecoverAll: second recovery engine, software RAID, F2FS and JFS repairs, LUKS/BitLocker
+sleuthkit
+mdadm
+f2fs-tools
+jfsutils
+cryptsetup
+# FastCopyLinux: fastest checksums for Verify
+python-xxhash
 # DiskHealth: NVMe self-tests
 nvme-cli
 # VirtConvert and Rufux: formatting new disks and USB drives, unmounting without a password
@@ -59,7 +69,8 @@ ntfsprogs
 # Rufux: legacy BIOS boot for Windows installation drives
 grub
 
-# ---- Desktop: X11 + LXQt (Qt 6, shared with the applications)
+# ---- Desktop: X11 + LXQt (Qt 6, shared with most applications), the Arch-Colors theme
+# (lxqt-themes) and Firefox
 xorg-server
 xorg-xinit
 xorg-xrdb
@@ -81,7 +92,7 @@ pcmanfm-qt
 gvfs
 qterminal
 featherpad
-falkon
+firefox
 breeze-icons
 ttf-dejavu
 xdg-utils
@@ -94,7 +105,6 @@ openssh
 gptfdisk
 parted
 testdisk
-cryptsetup
 lvm2
 hdparm
 efibootmgr
