@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=LiveRepair self-test
+Comment=Runs only when the kernel command line has liverepair.selftest (CI boot test)
+Exec=/usr/local/bin/liverepair-selftest
+NoDisplay=true
+X-LXQt-Need-Tray=false

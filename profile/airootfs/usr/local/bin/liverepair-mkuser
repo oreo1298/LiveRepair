@@ -1,0 +1,23 @@
+#!/bin/bash
+# Create the passwordless "live" user of the LiveRepair session (runs once per boot,
+# before the autologin on tty1). Desktop settings come from /etc/skel.
+set -eu
+
+groups=wheel
+for g in optical diskhealth; do
+    getent group "$g" >/dev/null && groups+=",$g"
+done
+
+useradd --create-home --comment "LiveRepair" --groups "$groups" --shell /bin/bash live
+passwd --delete live >/dev/null
+
+# Desktop launchers for the LiveRepair applications, straight from their packages
+desktop=/home/live/Desktop
+install -d -o live -g live "$desktop"
+for id in io.github.oreo1298.CloneAndRecover io.github.oreo1298.DiskHealth \
+          io.github.oreo1298.LinBurn io.github.oreo1298.Rufux \
+          io.github.oreo1298.VirtConvert io.github.oreo1298.PCInsuranceReport; do
+    src=/usr/share/applications/$id.desktop
+    [[ -e $src ]] && install -m 0755 -o live -g live "$src" "$desktop/$id.desktop"
+done
+install -m 0644 -o live -g live /usr/share/liverepair/README.txt "$desktop/README.txt"

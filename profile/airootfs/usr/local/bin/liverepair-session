@@ -1,0 +1,14 @@
+#!/bin/sh
+# Start the LiveRepair desktop (X11 + LXQt) from the tty1 autologin.
+
+# pcmanfm-qt only starts desktop launchers it trusts without asking first
+for f in "$HOME"/Desktop/*.desktop; do
+    [ -e "$f" ] && gio set -t string "$f" metadata::trust true 2>/dev/null
+done
+
+startx >"$HOME/.xsession-errors" 2>&1
+
+echo
+echo "The LiveRepair desktop has stopped (log: ~/.xsession-errors, ~/.local/share/xorg/)."
+echo "Type 'startx' to start it again, or 'sudo poweroff' to shut down."
+echo

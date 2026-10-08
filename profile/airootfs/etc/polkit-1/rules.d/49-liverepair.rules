@@ -1,0 +1,7 @@
+// LiveRepair live session: members of wheel (the live user) are never asked for a password,
+// so CloneAndRecover, DiskHealth, Rufux, VirtConvert and udisks work right away.
+polkit.addRule(function(action, subject) {
+    if (subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+});

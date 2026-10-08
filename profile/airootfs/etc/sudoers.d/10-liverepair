@@ -1,0 +1,2 @@
+# LiveRepair live session: the live user may run anything as root without a password.
+%wheel ALL=(ALL:ALL) NOPASSWD: ALL

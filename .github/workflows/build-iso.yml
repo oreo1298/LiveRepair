@@ -1,0 +1,158 @@
+name: Build ISO
+
+# Builds the ISO and boot-tests it in QEMU on every push and pull request.
+# To publish a release: Actions > Build ISO > Run workflow (with "Publish a release" ticked).
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'LICENSE']
+  pull_request:
+    paths-ignore: ['**.md', 'LICENSE']
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Publish a release with the ISO
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-iso-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+                      /opt/hostedtoolcache /usr/local/share/boost
+          df -h /
+
+      - name: Build the ISO (Arch Linux container)
+        run: scripts/build-in-docker.sh
+
+      - name: Show the result
+        run: |
+          ls -l out
+          cat out/*-apps.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: liverepair-iso
+          path: |
+            out/*.iso
+            out/*.sha256
+            out/*.txt
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+  test:
+    name: Boot test
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: liverepair-iso
+          path: out
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+            sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends qemu-system-x86 qemu-utils ovmf socat xorriso
+
+      - name: Boot the ISO and run its self-test
+        run: scripts/qemu-test.sh out/liverepair-*-x86_64.iso test-results
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: boot-test-results
+          path: test-results
+          retention-days: 14
+
+  release:
+    name: Release
+    needs: test
+    if: github.event_name == 'workflow_dispatch' && inputs.release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: liverepair-iso
+          path: out
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          iso=$(ls out/liverepair-*-x86_64.iso)
+          name=$(basename "$iso")
+          version=${name#liverepair-}; version=${version%-x86_64.iso}
+          bytes=$(stat -c %s "$iso")
+          if (( bytes >= 2147483648 )); then
+            echo "::error::$name is $bytes bytes; GitHub release files must be under 2 GiB"
+            exit 1
+          fi
+
+          tag=v$version
+          n=1
+          while gh release view "$tag" >/dev/null 2>&1; do
+            n=$((n + 1)); tag=v$version-$n
+          done
+
+          sha=$(cut -d' ' -f1 "$iso.sha256")
+          size=$(numfmt --to=iec --suffix=B "$bytes")
+          {
+            echo "Lightweight live system (Arch Linux + LXQt) with the LiveRepair tools preinstalled,"
+            echo "built from the default branch of each repository and boot-tested in QEMU (UEFI and BIOS)."
+            echo
+            echo "### Included applications"
+            echo '```'
+            tail -n +3 out/*-apps.txt
+            echo '```'
+            echo
+            echo "### How to use it"
+            echo "1. Download **$name** ($size)."
+            echo "2. Write it to a USB drive (Rufux, Rufus in DD mode, balenaEtcher, Ventoy, or"
+            echo "   \`sudo dd if=$name of=/dev/sdX bs=4M status=progress oflag=sync\`), or burn it to a DVD."
+            echo "3. Boot from it, UEFI or legacy BIOS. **Turn Secure Boot off** first: the ISO is not signed."
+            echo
+            echo "The desktop starts by itself. User \`live\`, no password; \`sudo\` and the apps' admin"
+            echo "actions work without a password. Disks are never mounted automatically."
+            echo "The boot menu also has a *safe graphics* entry and Memtest86+."
+            echo
+            echo "SHA-256 of the ISO: \`$sha\`"
+            echo
+            echo "Every package in the image, with versions: \`liverepair-$version-packages.txt\`."
+          } >notes.md
+
+          files=("$iso" "$iso.sha256" out/*-apps.txt)
+          [[ -e out/liverepair-$version-packages.txt ]] && files+=("out/liverepair-$version-packages.txt")
+          gh release create "$tag" --target "$GITHUB_SHA" --title "LiveRepair $version" \
+            --notes-file notes.md "${files[@]}"
+          echo "Published $tag" >>"$GITHUB_STEP_SUMMARY"

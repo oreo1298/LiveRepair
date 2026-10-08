@@ -1,0 +1,13 @@
+[Unit]
+Description=Create the LiveRepair live user
+After=systemd-sysusers.service
+Before=systemd-user-sessions.service
+ConditionPathExists=!/home/live
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/liverepair-mkuser
+
+[Install]
+WantedBy=multi-user.target

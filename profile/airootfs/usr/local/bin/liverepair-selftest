@@ -1,0 +1,110 @@
+#!/bin/bash
+# LiveRepair self-test, used by the ISO's CI boot test. Started by the LXQt session
+# (/etc/xdg/autostart), it does nothing unless the kernel command line has
+# "liverepair.selftest". It reports on the first serial port:
+#   LIVEREPAIR-SELFTEST: PASS|FAIL <check>   one line per check
+#   LIVEREPAIR-SHOT <name>                   a window is open; the host may take a screenshot
+#   LIVEREPAIR-SELFTEST: RESULT PASS|FAIL    the end
+grep -qw liverepair.selftest /proc/cmdline || exit 0
+
+failures=0
+log=/tmp/liverepair-selftest
+mkdir -p "$log"
+
+say() { printf 'LIVEREPAIR-SELFTEST: %s\n' "$*" | sudo tee /dev/ttyS0 >/dev/null; }
+shot() { printf 'LIVEREPAIR-SHOT %s\n' "$1" | sudo tee /dev/ttyS0 >/dev/null; sleep 6; }
+pass() { say "PASS $*"; }
+fail() { say "FAIL $*"; failures=$((failures + 1)); }
+# show a command's output on the serial port, indented
+dump() { sed 's/^/    | /' "$1" | sudo tee /dev/ttyS0 >/dev/null; }
+
+check() {  # check <name> <command...>: passes if the command exits 0
+    local name=$1; shift
+    if "$@" >"$log/$name.out" 2>&1; then pass "$name"; else fail "$name (exit $?)"; dump "$log/$name.out"; fi
+}
+
+gui() {  # gui <name> <command...>: passes if the program is still running after 20 s
+    local name=$1; shift
+    "$@" >"$log/$name.out" 2>&1 &
+    local pid=$!
+    sleep 20
+    if kill -0 "$pid" 2>/dev/null; then
+        pass "gui $name"
+        shot "$name"
+        kill "$pid" 2>/dev/null
+        sleep 2
+        kill -9 "$pid" 2>/dev/null
+    else
+        wait "$pid"
+        fail "gui $name (exited with $?)"
+        dump "$log/$name.out"
+    fi
+    wait "$pid" 2>/dev/null
+}
+
+say "START $(tr '\n' ' ' </etc/liverepair-release 2>/dev/null)"
+sleep 15                     # let the panel and the desktop settle
+shot desktop
+
+# the applications' own checks of what they need
+for doctor in "cnrctl doctor" "diskctl doctor" "virtconvert doctor"; do
+    $doctor >"$log/doctor.out" 2>&1
+    rc=$?
+    say "INFO $doctor (exit $rc):"
+    dump "$log/doctor.out"
+done
+check virtconvert-doctor virtconvert doctor
+
+# command line tools that the applications call
+for tool in ddrescue partclone.ext4 partclone.ntfs rsync smartctl fio nvme qemu-img wimlib-imagex \
+            xorriso cdrdao mkisofs growisofs mkudffs grub-install ntfs-3g mkntfs mkfs.exfat mkfs.fat \
+            mkfs.btrfs mkfs.xfs mkfs.ext4 udisksctl pkexec sgdisk parted testdisk zstd; do
+    if command -v "$tool" >/dev/null; then pass "tool $tool"; else fail "tool $tool missing"; fi
+done
+check python-modules python3 -c 'import PySide6.QtWidgets, PySide6.QtSvg, PySide6.QtPdf, PyQt6.QtWidgets, reportlab, PIL, zstandard'
+check rufux-uefi-ntfs test -s /usr/share/rufux/uefi-ntfs.img
+
+# services, privileges and disks
+check service-diskhealthd systemctl is-active --quiet diskhealthd.service
+check service-networkmanager systemctl is-active --quiet NetworkManager.service
+check polkit-no-password pkexec --disable-internal-agent /usr/bin/true
+check sudo-no-password sudo -n true
+check udisks-no-password udisksctl status
+check no-automount sh -c '! findmnt -rno SOURCE | grep -q "^/dev/[sv]d"'
+check cnrctl-list cnrctl list
+dump "$log/cnrctl-list.out"
+check diskctl-list diskctl list
+dump "$log/diskctl-list.out"
+check virtconvert-disks virtconvert disks
+dump "$log/virtconvert-disks.out"
+
+# a real conversion: raw -> VHDX -> VDI, then compare with the original
+work=$(mktemp -d)
+if qemu-img create -q -f raw "$work/disk.raw" 64M &&
+   printf 'LiveRepair self-test\n' | dd of="$work/disk.raw" bs=1 seek=1048576 conv=notrunc status=none &&
+   virtconvert convert -q -y -t vhdx -o "$work/disk.vhdx" "$work/disk.raw" >"$log/convert.out" 2>&1 &&
+   virtconvert convert -q -y -t vdi -o "$work/disk.vdi" "$work/disk.vhdx" >>"$log/convert.out" 2>&1 &&
+   qemu-img compare -q "$work/disk.raw" "$work/disk.vdi" >>"$log/convert.out" 2>&1; then
+    pass "virtconvert raw->vhdx->vdi"
+else
+    fail "virtconvert raw->vhdx->vdi"
+    dump "$log/convert.out"
+fi
+rm -rf "$work"
+
+# the desktop launchers and the applications' windows
+for id in CloneAndRecover DiskHealth LinBurn Rufux VirtConvert PCInsuranceReport; do
+    check "launcher-$id" test -x "$HOME/Desktop/io.github.oreo1298.$id.desktop"
+done
+gui cloneandrecover cloneandrecover
+gui diskhealth diskhealth
+gui linburn linburn
+gui rufux rufux
+gui virtconvert virtconvert
+gui pcinsurancereport pcinsurancereport
+
+if (( failures == 0 )); then
+    say "RESULT PASS"
+else
+    say "RESULT FAIL ($failures failed)"
+fi
