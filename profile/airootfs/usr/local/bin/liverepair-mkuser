@@ -20,3 +20,13 @@ for app in CloneAndRecover RecoverAll DiskHealth TM5Linux FastCopyLinux LinBurn 
     [[ -e $src ]] && install -m 0755 -o live -g live "$src" "$desktop/$id.desktop"
 done
 install -m 0644 -o live -g live /usr/share/liverepair/README.txt "$desktop/README.txt"
+
+# Openbox (the window manager): window borders in the Arch-Colors palette. The first <name> in
+# <theme> is the theme; the ones after it are fonts.
+if [[ -e /etc/xdg/openbox/rc.xml ]]; then
+    install -d -o live -g live /home/live/.config/openbox
+    awk '/<theme>/ { theme = 1 }
+         theme && /<name>/ { sub(/<name>[^<]*<\/name>/, "<name>LiveRepair-Arch-Colors</name>"); theme = 0 }
+         { print }' /etc/xdg/openbox/rc.xml >/home/live/.config/openbox/rc.xml
+    chown live:live /home/live/.config/openbox/rc.xml
+fi

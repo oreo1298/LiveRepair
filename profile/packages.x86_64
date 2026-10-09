@@ -96,6 +96,11 @@ firefox
 breeze-icons
 ttf-dejavu
 xdg-utils
+# Dark mode for GTK / libadwaita programs and Firefox: the desktop portal publishes the
+# color-scheme preference (set in /usr/share/glib-2.0/schemas/90_liverepair.gschema.override)
+xdg-desktop-portal
+xdg-desktop-portal-gtk
+gsettings-desktop-schemas
 
 # ---- Networking (Wi-Fi setup: "Network Connections" in the panel runs nmtui)
 networkmanager

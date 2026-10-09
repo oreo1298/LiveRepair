@@ -51,7 +51,7 @@ example `sudo APP_SRC_DiskHealth=~/src/DiskHealth ./build.sh`.
 
 - **DVD**: burn the ISO as a disc image with LinBurn, ImgBurn, Brasero or K3b, or from a terminal:
   `growisofs -dvd-compat -Z /dev/sr0=liverepair-*.iso` (or `xorriso -as cdrecord -v dev=/dev/sr0
-  -eject liverepair-*.iso`). The disc boots with UEFI and with legacy BIOS.
+  -eject liverepair-*.iso`). The disc boots with UEFI (GRUB) and with legacy BIOS (syslinux).
 - **USB drive**: write it with Rufux, Rufus (DD mode), balenaEtcher or Ventoy, or with
   `sudo dd if=liverepair-*.iso of=/dev/sdX bs=4M status=progress oflag=sync`.
 
@@ -59,7 +59,10 @@ Then boot from it. **Turn Secure Boot off** first: the ISO is not signed.
 
 ## Using it
 
-The LXQt desktop starts on its own, with the **Arch-Colors** theme and its wallpaper. The user is
+The LXQt desktop starts on its own, with the **Arch-Colors** theme, its color palette and its
+wallpaper, so it is dark throughout: the Qt programs follow the Arch-Colors palette, the GTK
+programs and Firefox get the desktop's dark preference, and the window borders and icons are dark
+too. Programs that have their own theme setting can still be switched to light. The user is
 `live`, without a password; `sudo` and the programs' administrator actions (cloning, recovery,
 formatting, S.M.A.R.T.) work without asking for one. Launchers for the programs are on the
 desktop, in the panel and in the menu.
@@ -106,6 +109,8 @@ repository, adds the packages to a local package repository, and runs `mkarchiso
 2. with BIOS firmware, choosing *copy to RAM* in the boot menu, and checking the desktop, the
    theme, and that the DVD is no longer in use.
 
+Both boots also check that dark mode reaches Qt, GTK and libadwaita programs.
+
 ```sh
 scripts/qemu-test.sh out/liverepair-*.iso test-results     # uses KVM when available
 ```
@@ -121,5 +126,13 @@ nothing; the ISO and the screenshots are kept for a few days as the run's artifa
 - Desktop defaults (theme, panel, file manager, session): [`profile/airootfs/etc/skel`](profile/airootfs/etc/skel)
 - The live user, autologin and permissions: [`profile/airootfs`](profile/airootfs)
   (`usr/local/bin/liverepair-mkuser`, `etc/polkit-1/rules.d`, `etc/sudoers.d`)
-- Boot menus: [`profile/efiboot`](profile/efiboot) (UEFI), [`profile/syslinux`](profile/syslinux) (BIOS)
+- Boot menus: [`profile/grub/grub.cfg`](profile/grub/grub.cfg) (UEFI), [`profile/syslinux`](profile/syslinux) (BIOS).
+  UEFI boots with GRUB rather than systemd-boot so that the ISO also boots from a DVD on real PCs:
+  systemd-boot needs the kernel inside the El Torito boot image, which then outgrows what the boot
+  catalog can describe (32 MiB), and many PCs stop with "Error opening root path: Device error".
+  `build.sh` checks this and fails if it ever happens again.
+- Dark mode: the `[Palette]` in [`lxqt.conf`](profile/airootfs/etc/skel/.config/lxqt/lxqt.conf) (Qt),
+  [`90_liverepair.gschema.override`](profile/airootfs/usr/share/glib-2.0/schemas/90_liverepair.gschema.override)
+  (GTK, libadwaita, Firefox, through xdg-desktop-portal), and the Openbox theme in
+  [`usr/share/themes`](profile/airootfs/usr/share/themes)
 - BIOS boot menu background: [`tools/make-artwork.py`](tools/make-artwork.py)

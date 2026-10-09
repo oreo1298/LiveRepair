@@ -76,6 +76,26 @@ check session-desktop pgrep -u "$USER" -f 'pcmanfm-qt --desktop'
 check theme-arch-colors grep -qx 'theme=Arch-Colors' "$HOME/.config/lxqt/lxqt.conf"
 check theme-installed test -d /usr/share/lxqt/themes/Arch-Colors
 check theme-wallpaper test -s /usr/share/lxqt/wallpapers/plasma_arch.png
+# dark mode: Qt programs get the Arch-Colors palette; GTK, libadwaita and Firefox ask the portal
+check dark-qt-palette python3 -c '
+import sys
+from PySide6.QtWidgets import QApplication
+app = QApplication(sys.argv)
+lightness = app.palette().window().color().lightness()
+print("window color lightness", lightness)
+sys.exit(0 if lightness < 128 else 1)'
+check dark-portal-color-scheme sh -c 'gdbus call --session --dest org.freedesktop.portal.Desktop \
+    --object-path /org/freedesktop/portal/desktop --method org.freedesktop.portal.Settings.ReadOne \
+    org.freedesktop.appearance color-scheme | tee /dev/stderr | grep -q "uint32 1"'
+check dark-libadwaita python3 -c '
+import sys, gi
+gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")
+from gi.repository import Adw
+Adw.init()
+manager = Adw.StyleManager.get_default()
+print("follows the desktop:", manager.get_system_supports_color_schemes(), "dark:", manager.get_dark())
+sys.exit(0 if manager.get_system_supports_color_schemes() and manager.get_dark() else 1)'
+check dark-window-borders grep -q LiveRepair-Arch-Colors "$HOME/.config/openbox/rc.xml"
 shot desktop
 
 if [[ $mode == full ]]; then

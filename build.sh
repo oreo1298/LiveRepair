@@ -6,7 +6,7 @@
 #      from the default branch of their GitHub repositories
 #   2. puts the packages in a local pacman repository
 #   3. builds the ISO from profile/ with mkarchiso, with that repository added
-#   4. checks that the ISO fits on a single-layer DVD
+#   4. checks that the ISO fits on a single-layer DVD and that firmware can boot it from one
 #
 # Environment:
 #   OUT_DIR    where the ISO goes (default: ./out)
@@ -125,4 +125,20 @@ size=$(stat -c %s "$iso")
 (( size <= dvd_size )) ||
     die "$(basename "$iso") is $size bytes, too big for a single-layer DVD ($dvd_size bytes)"
 
-msg "Done: $iso ($(numfmt --to=iec --suffix=B "$size"), fits on a DVD)"
+# Booting from a DVD, UEFI firmware reads the EFI boot image only as far as its El Torito boot
+# catalog entry says: a 16-bit count of 512-byte sectors, so 32 MiB at most. A bigger image is
+# recorded as 0, which some firmware takes as "the rest of the disc" (QEMU does) and much real
+# firmware does not ("Error opening root path: Device error").
+bad=$(xorriso -indev "$iso" -report_el_torito plain 2>/dev/null | awk '
+    /^El Torito boot img :/ { platform[$6] = $7; load[$6] = $12 }
+    /^El Torito img blks :/ { blocks[$6] = $7 }
+    END {
+        for (i in platform)
+            if (platform[i] == "UEFI" && (load[i] == 0 || load[i] * 512 < blocks[i] * 2048))
+                printf "%d MiB EFI boot image, but the boot catalog covers %d KiB\n", blocks[i] * 2048 / 1048576, load[i] / 2
+    }')
+[[ -z $bad ]] || die "$(basename "$iso") would not boot from a DVD on many PCs: $bad"
+grep -q "El Torito boot img : .* UEFI " < <(xorriso -indev "$iso" -report_el_torito plain 2>/dev/null) ||
+    die "$(basename "$iso") has no UEFI El Torito boot image"
+
+msg "Done: $iso ($(numfmt --to=iec --suffix=B "$size"), fits on and boots from a DVD)"

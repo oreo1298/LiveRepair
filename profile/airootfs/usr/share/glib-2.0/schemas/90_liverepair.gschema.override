@@ -1,0 +1,6 @@
+# LiveRepair: dark mode for GTK and libadwaita programs and Firefox, which read these settings
+# directly or through the desktop portal (org.freedesktop.appearance color-scheme).
+[org.gnome.desktop.interface]
+color-scheme='prefer-dark'
+gtk-theme='Adwaita-dark'
+icon-theme='breeze-dark'
