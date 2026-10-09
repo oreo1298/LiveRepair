@@ -14,6 +14,8 @@ Programs (desktop, panel and the application menu):
                          and image disks.                               CLI: recoverctl
   DiskHealth             S.M.A.R.T., health, benchmarks and surface tests
                          for HDDs, SSDs, NVMe and flash drives.         CLI: diskctl
+  ManageDisks            Partition and format disks (FAT, exFAT, NTFS, ext4, Btrfs,
+                         XFS, F2FS, HFS+, APFS, LUKS).                  CLI: managedisks-cli
   TM5 for Linux          RAM stability test with TestMem5 configs
                          (Extreme1 by anta777 and others).              CLI: tm5linux-cli
   FastCopy Linux         Fast file copy, sync, move and delete with

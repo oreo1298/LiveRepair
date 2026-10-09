@@ -1,0 +1,33 @@
+# Experimental APFS tools (mkapfs, apfsck, apfs-label, apfs-snap) for ManageDisks.
+# Pinned to the v0.2.1 release of https://github.com/linux-apfs/apfsprogs; to update, change
+# pkgver and _commit to a newer release tag and its commit.
+
+pkgname=apfsprogs
+pkgver=0.2.1
+_commit=3721463ba7f539e532907bc1d10ed5b9a97d0449  # tag v0.2.1
+pkgrel=1
+pkgdesc='Experimental APFS tools for Linux: mkapfs, apfsck, apfs-label, apfs-snap'
+arch=('x86_64')
+url='https://github.com/linux-apfs/apfsprogs'
+license=('GPL-2.0-only')
+depends=('glibc')
+makedepends=('git')
+source=("apfsprogs::git+https://github.com/linux-apfs/apfsprogs.git#commit=${_commit}")
+sha256sums=('SKIP')
+
+_progs=(apfsck mkapfs apfs-label apfs-snap)
+
+build() {
+  cd apfsprogs
+  for prog in "${_progs[@]}"; do
+    make -C "$prog"
+  done
+}
+
+package() {
+  cd apfsprogs
+  for prog in "${_progs[@]}"; do
+    make -C "$prog" install DESTDIR="$pkgdir" BINDIR=/usr/bin MANDIR=/usr/share/man/man8
+  done
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

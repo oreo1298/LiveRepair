@@ -8,6 +8,7 @@ programs preinstalled and ready to use:
 | **CloneAndRecover** | [CloneAndRecover](https://github.com/oreo1298/CloneAndRecover) | Clone disks (also to smaller ones), image and restore them, rescue failing disks with GNU ddrescue |
 | **RecoverAll** | [RecoverAll](https://github.com/oreo1298/RecoverAll) | Recover deleted files, lost partitions and photos; repair and image disks |
 | **DiskHealth** | [DiskHealth](https://github.com/oreo1298/DiskHealth) | S.M.A.R.T., health, benchmarks and surface tests for HDDs, SSDs, NVMe and flash drives |
+| **ManageDisks** | [ManageDisks](https://github.com/oreo1298/ManageDisks) | Disk and partition manager (GUI and a diskpart-style CLI), including Mac HFS+ and APFS |
 | **TM5 for Linux** | [TM5Linux](https://github.com/oreo1298/TM5Linux) | RAM stability test with TestMem5 configs (Extreme1 by anta777 and others) |
 | **FastCopy Linux** | [FastCopyLinux](https://github.com/oreo1298/FastCopyLinux) | Fast file copy, sync, move and delete with verification |
 | **LinBurn** | [ImgBurnLinux](https://github.com/oreo1298/ImgBurnLinux) | ImgBurn-style CD/DVD/Blu-ray burning, reading, building and verifying |
@@ -17,7 +18,11 @@ programs preinstalled and ready to use:
 Every prerequisite is included: Qt 6 with PySide6 and PyQt6, GTK 4 with libadwaita and PyGObject,
 ddrescue, partclone, sleuthkit, smartmontools, fio, nvme-cli, qemu-img, wimlib, xorriso, cdrdao,
 cdrtools, dvd+rw-tools, GRUB, the Rufus UEFI:NTFS image, mdadm, cryptsetup, xxHash, and the tools
-for FAT, exFAT, NTFS, ext4, Btrfs, XFS, F2FS, JFS and UDF. **Firefox** is included too.
+for FAT, exFAT, NTFS, ext4, Btrfs, XFS, F2FS, JFS, UDF, HFS+ and APFS. **Firefox** is included too.
+
+The HFS+ and APFS tools that ManageDisks uses are not in Arch's repositories, so this repository
+builds them itself from [`packages/`](packages): `hfsprogs` (from the AUR recipe, plus the `fsck.hfs`
+name for classic HFS) and `apfsprogs` (pinned to its v0.2.1 release).
 
 ## Build the ISO
 
@@ -105,7 +110,8 @@ repository, adds the packages to a local package repository, and runs `mkarchiso
 
 1. with UEFI firmware, running a self-test that checks every program, its tools, services and
    passwordless admin access, does real work with them (a TM5 engine self-test, a verified
-   FastCopy copy, a VirtConvert conversion), and takes a screenshot of each program's window;
+   FastCopy copy, a VirtConvert conversion, and ManageDisks partitioning the test disk with HFS+
+   and APFS and checking both), and takes a screenshot of each program's window;
 2. with BIOS firmware, choosing *copy to RAM* in the boot menu, and checking the desktop, the
    theme, and that the DVD is no longer in use.
 
@@ -122,6 +128,8 @@ nothing; the ISO and the screenshots are kept for a few days as the run's artifa
 
 - Programs: the `apps` list at the top of [`build.sh`](build.sh), plus the package name in
   [`profile/packages.x86_64`](profile/packages.x86_64)
+- Tools that are not in Arch's repositories: a PKGBUILD in its own folder under [`packages/`](packages),
+  plus the package name in `packages.x86_64`. `build.sh` builds every folder there.
 - Other packages: [`profile/packages.x86_64`](profile/packages.x86_64)
 - Desktop defaults (theme, panel, file manager, session): [`profile/airootfs/etc/skel`](profile/airootfs/etc/skel)
 - The live user, autologin and permissions: [`profile/airootfs`](profile/airootfs)

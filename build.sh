@@ -3,7 +3,8 @@
 #
 # Runs as root on Arch Linux (or in an Arch Linux container: scripts/build-in-docker.sh).
 #   1. builds the applications into pacman packages with their own PKGBUILDs,
-#      from the default branch of their GitHub repositories
+#      from the default branch of their GitHub repositories, and the tools in packages/
+#      that are not in Arch's repositories (hfsprogs and apfsprogs for ManageDisks)
 #   2. puts the packages in a local pacman repository
 #   3. builds the ISO from profile/ with mkarchiso, with that repository added
 #   4. checks that the ISO fits on a single-layer DVD and that firmware can boot it from one
@@ -15,6 +16,7 @@
 #                                cloning it, e.g. APP_SRC_DiskHealth=~/src/DiskHealth
 #   KEEP_WORK=1                  keep the mkarchiso work directory afterwards
 set -euo pipefail
+shopt -s inherit_errexit   # also stop on errors inside $(...), e.g. in build_pkg
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 out_dir=$(realpath -m "${OUT_DIR:-$here/out}")
@@ -33,6 +35,7 @@ apps=(
     "ImgBurnLinux       linburn             packaging/arch/local"
     "WindowsUSBLinux    rufux               ."
     "VirtConvert        virtconvert         ."
+    "ManageDisks        managedisks-git     packaging/arch"
 )
 # A single-layer DVD±R holds 4,700,372,992 bytes
 dvd_size=4700372992
@@ -44,9 +47,9 @@ die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 [[ -e /etc/arch-release ]] || die "run on Arch Linux, or use scripts/build-in-docker.sh"
 
 msg "Installing the build tools"
-# grub: mkarchiso builds the UEFI boot loader with the host's grub-mkstandalone
-pacman -Syu --noconfirm --needed archiso grub git base-devel python-build python-installer \
-    python-setuptools python-wheel
+# grub: mkarchiso builds the UEFI boot loader with the host's grub-mkstandalone.
+# Each PKGBUILD's own makedepends are installed before it is built (build_pkg).
+pacman -Syu --noconfirm --needed archiso grub git base-devel
 
 # makepkg refuses to run as root
 id builder &>/dev/null || useradd --create-home --shell /bin/bash builder
@@ -63,6 +66,27 @@ release_info=$work_dir/liverepair-release
 iso_version=$(date --date="@$SOURCE_DATE_EPOCH" +%Y.%m.%d)
 printf 'LiveRepair %s\n\n' "$iso_version" >"$release_info"
 
+# build_pkg DIR [CHECKOUT]: install the makedepends of DIR/PKGBUILD, build it as the builder
+# user and copy the package to the local repository; prints the package file.
+# CHECKOUT: FastCopyLinux's PKGBUILD clones its sources itself unless FASTCOPY_SOURCE says otherwise
+build_pkg() {
+    local dir=$1 checkout=${2-} name deps pkg
+    name=$(cd "$dir" && runuser -u builder -- makepkg --printsrcinfo | awk -F ' = ' '/^pkgname = / { print $2; exit }')
+    mapfile -t deps < <(cd "$dir" && runuser -u builder -- makepkg --printsrcinfo |
+        awk -F ' = ' '/^\tmakedepends(_x86_64)? = / { sub(/[<>=].*/, "", $2); print $2 }' | sort -u)
+    if (( ${#deps[@]} )); then
+        pacman -S --noconfirm --needed --asdeps "${deps[@]}" >&2
+    fi
+    (cd "$dir" &&
+        runuser -u builder -- env PKGDEST="$pkg_dir" ${checkout:+FASTCOPY_SOURCE="git+file://$checkout"} \
+            makepkg --force --nodeps --nocheck --noconfirm >&2)
+    # (compiled packages also get a -debug package, which the ISO does not need)
+    pkg=$(find "$pkg_dir" -name "$name-*.pkg.tar.zst" ! -name "$name-debug-*" | head -n1)
+    [[ -n $pkg ]] || die "makepkg did not produce a $name package"
+    cp "$pkg" "$repo_dir/"
+    echo "$pkg"
+}
+
 for app in "${apps[@]}"; do
     read -r repo pkgname pkgbuild_dir <<<"$app"
     msg "Building $repo ($pkgname)"
@@ -73,22 +97,28 @@ for app in "${apps[@]}"; do
     else
         git clone --quiet "$github/$repo.git" "$src_dir/$repo"
     fi
+    # PKGBUILDs that clone their own repository from GitHub (ManageDisks): build this checkout
+    sed -i "s#git+$github/$repo\.git#git+file://$src_dir/$repo#" "$src_dir/$repo/$pkgbuild_dir/PKGBUILD"
     chown -R builder: "$src_dir/$repo"
 
-    # FASTCOPY_SOURCE: FastCopyLinux's PKGBUILD clones its sources itself; build this checkout
-    (cd "$src_dir/$repo/$pkgbuild_dir" &&
-        runuser -u builder -- env PKGDEST="$pkg_dir" FASTCOPY_SOURCE="git+file://$src_dir/$repo" \
-            makepkg --force --nodeps --nocheck --noconfirm)
-
-    pkg=$(find "$pkg_dir" -name "$pkgname-*.pkg.tar.zst" | head -n1)
-    [[ -n $pkg ]] || die "makepkg did not produce a $pkgname package"
-    cp "$pkg" "$repo_dir/"
-
+    pkg=$(build_pkg "$src_dir/$repo/$pkgbuild_dir" "$src_dir/$repo")
+    [[ $(pacman -Qp "$pkg" | cut -d' ' -f1) == "$pkgname" ]] || die "$repo built $(basename "$pkg"), not $pkgname"
     version=$(pacman -Qp "$pkg" | cut -d' ' -f2)
     commit=$(git -c safe.directory="*" -C "$src_dir/$repo" log -1 --format='%h %cs' 2>/dev/null || echo "local")
     branch=$(git -c safe.directory="*" -C "$src_dir/$repo" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "-")
     printf '%-18s %-26s %s/%s @ %s (%s)\n' "$pkgname" "$version" "$github" "$repo" "$commit" "$branch" \
         >>"$release_info"
+done
+
+# Tools that are not in Arch's repositories, from packages/ in this repository
+for dir in "$here"/packages/*/; do
+    name=$(basename "$dir")
+    msg "Building $name (packages/$name)"
+    cp -a "$dir" "$src_dir/packages-$name"
+    chown -R builder: "$src_dir/packages-$name"
+    pkg=$(build_pkg "$src_dir/packages-$name")
+    printf '%-18s %-26s %s\n' "$(pacman -Qp "$pkg" | cut -d' ' -f1)" "$(pacman -Qp "$pkg" | cut -d' ' -f2)" \
+        "packages/$name in LiveRepair" >>"$release_info"
 done
 
 msg "Creating the local package repository"

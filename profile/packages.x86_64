@@ -38,6 +38,7 @@ fastcopy-linux-git
 linburn
 rufux
 virtconvert
+managedisks-git
 
 # ---- Optional dependencies of the applications
 # LinBurn (ImgBurnLinux): audio CDs and BIN/CUE, mkisofs, DVD layer break, UDF
@@ -68,6 +69,10 @@ ntfs-3g
 ntfsprogs
 # Rufux: legacy BIOS boot for Windows installation drives
 grub
+# ManageDisks: Mac HFS+ and APFS (built from packages/ in this repository, not in Arch's
+# repositories); its other tools (FAT, exFAT, NTFS, Btrfs, XFS, F2FS, LUKS, S.M.A.R.T.) are above
+hfsprogs
+apfsprogs
 
 # ---- Desktop: X11 + LXQt (Qt 6, shared with most applications), the Arch-Colors theme
 # (lxqt-themes) and Firefox

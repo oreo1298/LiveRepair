@@ -14,7 +14,7 @@ passwd --delete live >/dev/null
 # Desktop launchers for the LiveRepair applications, straight from their packages
 desktop=/home/live/Desktop
 install -d -o live -g live "$desktop"
-for app in CloneAndRecover RecoverAll DiskHealth TM5Linux FastCopyLinux LinBurn Rufux VirtConvert; do
+for app in CloneAndRecover RecoverAll DiskHealth ManageDisks TM5Linux FastCopyLinux LinBurn Rufux VirtConvert; do
     id=io.github.oreo1298.$app
     src=/usr/share/applications/$id.desktop
     [[ -e $src ]] && install -m 0755 -o live -g live "$src" "$desktop/$id.desktop"

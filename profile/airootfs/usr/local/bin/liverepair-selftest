@@ -109,7 +109,8 @@ if [[ $mode == full ]]; then
     check virtconvert-doctor virtconvert doctor
 
     # command line tools of the applications and the tools they call
-    for tool in cnrctl recoverctl diskctl tm5linux-cli fastcopy-linux virtconvert linburn rufux firefox \
+    for tool in cnrctl recoverctl diskctl managedisks managedisks-cli tm5linux-cli fastcopy-linux \
+                virtconvert linburn rufux firefox mkfs.hfsplus fsck.hfsplus fsck.hfs mkapfs apfsck \
                 ddrescue partclone.ext4 partclone.ntfs rsync smartctl fio nvme qemu-img wimlib-imagex \
                 xorriso cdrdao mkisofs growisofs mkudffs grub-install ntfs-3g mkntfs mkfs.exfat mkfs.fat \
                 mkfs.btrfs mkfs.xfs mkfs.ext4 fls mdadm cryptsetup fsck.f2fs fsck.jfs udisksctl pkexec \
@@ -156,13 +157,38 @@ from gi.repository import Gtk, Adw'
     fi
     rm -rf "$work"
 
+    # ManageDisks: its own list of filesystems and their tools, then real work on QEMU's empty
+    # test disk (only that one, recognised by its serial number): a GPT table with an HFS+ and an
+    # APFS partition, which ManageDisks then checks with hfsprogs and apfsprogs
+    check managedisks-all-tools sh -c 'managedisks-cli support | tee /dev/stderr |
+        grep -q "Every supported filesystem has all of its tools installed"'
+    dump "$log/managedisks-all-tools.out"
+    if [[ $(lsblk -dno SERIAL /dev/sda 2>/dev/null) == LIVEREPAIR-HD ]]; then
+        check managedisks-gpt-table sudo managedisks-cli table --yes /dev/sda gpt
+        check managedisks-create-hfsplus sudo managedisks-cli create --yes /dev/sda --size 512M --fs hfsplus --label LR-HFS
+        check managedisks-create-apfs sudo managedisks-cli create --yes /dev/sda --size 512M --fs apfs --label LR-APFS
+        sudo udevadm settle
+        for fs in hfsplus apfs; do
+            part=$(lsblk -nrpo NAME,FSTYPE /dev/sda | awk -v fs="$fs" '$2 == fs { print $1; exit }')
+            if [[ -n $part ]]; then
+                check "managedisks-check-$fs" sudo managedisks-cli check --yes --no-repair "$part"
+            else
+                fail "managedisks-format-$fs (no $fs partition on /dev/sda)"
+            fi
+        done
+        lsblk -o NAME,SIZE,FSTYPE,LABEL /dev/sda >"$log/lsblk.out" 2>&1
+        say "INFO /dev/sda after ManageDisks:"
+        dump "$log/lsblk.out"
+    fi
+
     # the desktop launchers and the applications' windows
-    for app in CloneAndRecover RecoverAll DiskHealth TM5Linux FastCopyLinux LinBurn Rufux VirtConvert; do
+    for app in CloneAndRecover RecoverAll DiskHealth ManageDisks TM5Linux FastCopyLinux LinBurn Rufux VirtConvert; do
         check "launcher-$app" test -x "$HOME/Desktop/io.github.oreo1298.$app.desktop"
     done
     gui cloneandrecover cloneandrecover
     gui recoverall recoverall
     gui diskhealth diskhealth
+    gui managedisks managedisks
     gui tm5linux tm5linux
     gui fastcopy-linux fastcopy-linux
     gui linburn linburn

@@ -1,5 +1,6 @@
-LiveRepair: CloneAndRecover, RecoverAll, DiskHealth, TM5 for Linux, FastCopy Linux,
+LiveRepair: CloneAndRecover, RecoverAll, DiskHealth, ManageDisks, TM5 for Linux, FastCopy Linux,
 LinBurn (ImgBurnLinux), Rufux (WindowsUSBLinux) and VirtConvert&Create.
 
-The desktop starts on tty1. Command line tools: cnrctl, recoverctl, diskctl, tm5linux-cli,
-fastcopy-linux --no-ui, virtconvert. The user "live" has no password and may use sudo.
+The desktop starts on tty1. Command line tools: cnrctl, recoverctl, diskctl, managedisks-cli,
+tm5linux-cli, fastcopy-linux --no-ui and virtconvert. The user "live" has no password and may
+use sudo.
