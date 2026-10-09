@@ -44,7 +44,8 @@ die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 [[ -e /etc/arch-release ]] || die "run on Arch Linux, or use scripts/build-in-docker.sh"
 
 msg "Installing the build tools"
-pacman -Syu --noconfirm --needed archiso git base-devel python-build python-installer \
+# grub: mkarchiso builds the UEFI boot loader with the host's grub-mkstandalone
+pacman -Syu --noconfirm --needed archiso grub git base-devel python-build python-installer \
     python-setuptools python-wheel
 
 # makepkg refuses to run as root
