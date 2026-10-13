@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Build the LiveRepair ISO.
 #
-# Runs as root on Arch Linux (or in an Arch Linux container: scripts/build-in-docker.sh).
+# Runs as root on Arch Linux or an Arch-based system (CachyOS, EndeavourOS, Manjaro...), or in an
+# Arch Linux container (scripts/build-in-docker.sh). On a computer of its own it installs the
+# build tools it is missing and a "builder" user (makepkg does not run as root), but does not
+# update the system; the packages in the ISO are downloaded fresh either way.
 #   1. builds the applications into pacman packages with their own PKGBUILDs,
 #      from the default branch of their GitHub repositories, and the tools in packages/
 #      that are not in Arch's repositories (hfsprogs and apfsprogs for ManageDisks)
@@ -43,13 +46,20 @@ dvd_size=4700372992
 msg() { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
-(( EUID == 0 )) || die "run as root (mkarchiso needs it)"
-[[ -e /etc/arch-release ]] || die "run on Arch Linux, or use scripts/build-in-docker.sh"
+(( EUID == 0 )) || die "run as root (mkarchiso needs it): sudo ./build.sh"
+command -v pacman >/dev/null ||
+    die "run on Arch Linux or an Arch-based system, or build in a container: sudo scripts/build-in-docker.sh"
 
 msg "Installing the build tools"
 # grub: mkarchiso builds the UEFI boot loader with the host's grub-mkstandalone.
 # Each PKGBUILD's own makedepends are installed before it is built (build_pkg).
-pacman -Syu --noconfirm --needed archiso grub git base-devel
+tools=(archiso grub git base-devel)
+if [[ ${LIVEREPAIR_CONTAINER-} == 1 ]]; then
+    pacman -Syu --noconfirm --needed "${tools[@]}"     # a throwaway container: bring it up to date
+else
+    pacman -S --noconfirm --needed "${tools[@]}" ||    # this computer: leave its updates to its owner
+        die "could not install the build tools; update this system (sudo pacman -Syu) and try again"
+fi
 
 # makepkg refuses to run as root
 id builder &>/dev/null || useradd --create-home --shell /bin/bash builder
@@ -62,6 +72,24 @@ rm -rf "$src_dir" "$pkg_dir" "$repo_dir" "$profile_dir" "$work_dir/pacman-db" "$
 mkdir -p "$src_dir" "$pkg_dir" "$repo_dir" "$out_dir"
 chown builder: "$pkg_dir"
 
+# The ISO's programs must run on any x86-64 PC, whatever this computer's makepkg.conf says (some
+# Arch-based systems, such as CachyOS, may compile for newer CPUs only): its settings, with Arch's
+# generic compiler flags and package format
+makepkg_conf=$work_dir/makepkg.conf
+{
+    cat /etc/makepkg.conf
+    cat <<'CONF'
+
+# ---- LiveRepair (build.sh): Arch Linux's generic x86-64 flags
+CFLAGS="-march=x86-64 -mtune=generic -O2 -pipe -fno-plt -fexceptions -Wp,-D_FORTIFY_SOURCE=3 -Wformat -Werror=format-security -fstack-clash-protection -fcf-protection -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer"
+CXXFLAGS="$CFLAGS -Wp,-D_GLIBCXX_ASSERTIONS"
+LDFLAGS="-Wl,-O1 -Wl,--sort-common -Wl,--as-needed -Wl,-z,relro -Wl,-z,now -Wl,-z,pack-relative-relocs"
+LTOFLAGS="-flto=auto"
+RUSTFLAGS="-Cforce-frame-pointers=yes"
+PKGEXT='.pkg.tar.zst'
+CONF
+} >"$makepkg_conf"
+
 release_info=$work_dir/liverepair-release
 iso_version=$(date --date="@$SOURCE_DATE_EPOCH" +%Y.%m.%d)
 printf 'LiveRepair %s\n\n' "$iso_version" >"$release_info"
@@ -71,15 +99,16 @@ printf 'LiveRepair %s\n\n' "$iso_version" >"$release_info"
 # CHECKOUT: FastCopyLinux's PKGBUILD clones its sources itself unless FASTCOPY_SOURCE says otherwise
 build_pkg() {
     local dir=$1 checkout=${2-} name deps pkg
-    name=$(cd "$dir" && runuser -u builder -- makepkg --printsrcinfo | awk -F ' = ' '/^pkgname = / { print $2; exit }')
-    mapfile -t deps < <(cd "$dir" && runuser -u builder -- makepkg --printsrcinfo |
+    name=$(cd "$dir" && runuser -u builder -- makepkg --config "$makepkg_conf" --printsrcinfo |
+        awk -F ' = ' '/^pkgname = / { print $2; exit }')
+    mapfile -t deps < <(cd "$dir" && runuser -u builder -- makepkg --config "$makepkg_conf" --printsrcinfo |
         awk -F ' = ' '/^\tmakedepends(_x86_64)? = / { sub(/[<>=].*/, "", $2); print $2 }' | sort -u)
     if (( ${#deps[@]} )); then
         pacman -S --noconfirm --needed --asdeps "${deps[@]}" >&2
     fi
     (cd "$dir" &&
         runuser -u builder -- env PKGDEST="$pkg_dir" ${checkout:+FASTCOPY_SOURCE="git+file://$checkout"} \
-            makepkg --force --nodeps --nocheck --noconfirm >&2)
+            makepkg --config "$makepkg_conf" --force --nodeps --nocheck --noconfirm >&2)
     # (compiled packages also get a -debug package, which the ISO does not need)
     pkg=$(find "$pkg_dir" -name "$name-*.pkg.tar.zst" ! -name "$name-debug-*" | head -n1)
     [[ -n $pkg ]] || die "makepkg did not produce a $name package"

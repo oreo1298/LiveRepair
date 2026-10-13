@@ -29,7 +29,7 @@ name for classic HFS) and `apfsprogs` (pinned to its v0.2.1 release).
 The ISO is built from the latest version of each program (the default branch of each repository)
 whenever you build it. It needs about 10 GB of free disk space and an internet connection.
 
-On Arch Linux (or an Arch-based distribution), as root:
+On Arch Linux or an Arch-based distribution (CachyOS, EndeavourOS, Manjaro...):
 
 ```sh
 git clone https://github.com/oreo1298/LiveRepair.git
@@ -37,13 +37,23 @@ cd LiveRepair
 sudo ./build.sh
 ```
 
-On any other Linux, with Docker or Podman (the build runs in an Arch Linux container):
+This installs the build tools that are missing (archiso, GRUB, base-devel and what each program
+needs to build) and a `builder` user, because makepkg does not run as root. It does not update
+your system, and it compiles for any x86-64 PC whatever your own compiler settings are (some
+Arch-based systems, such as CachyOS, may be set up to compile for newer CPUs only).
+
+On any Linux with Docker or Podman, Arch-based or not (the build runs in an Arch Linux
+container, so nothing is installed on your computer):
 
 ```sh
 git clone https://github.com/oreo1298/LiveRepair.git
 cd LiveRepair
 sudo scripts/build-in-docker.sh
 ```
+
+Docker's service has to be running: if the script says it is not, start it with
+`sudo systemctl start docker` (or `sudo systemctl enable --now docker` to start it at every boot).
+The script uses Podman instead when Docker is not installed or not running.
 
 The ISO lands in `out/` (`liverepair-YYYY.MM.DD-x86_64.iso`, about 1.5 GB), with its SHA-256
 checksum and a list of the programs and packages in it. The build stops with an error if the ISO
