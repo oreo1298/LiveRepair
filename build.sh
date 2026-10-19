@@ -10,7 +10,9 @@
 #      that are not in Arch's repositories (hfsprogs and apfsprogs for ManageDisks)
 #   2. puts the packages in a local pacman repository
 #   3. builds the ISO from profile/ with mkarchiso, with that repository added
-#   4. checks that the ISO fits on a single-layer DVD and that firmware can boot it from one
+#   4. makes it boot with Secure Boot on (scripts/secureboot.sh): shim, and GRUB, the kernel and
+#      Memtest86+ signed with this computer's own key, made in keys/ on the first build
+#   5. checks that the ISO fits on a single-layer DVD and that firmware can boot it from one
 #
 # Environment:
 #   OUT_DIR    where the ISO goes (default: ./out)
@@ -18,6 +20,8 @@
 #   APP_SRC_<Repository>=/path   build an application from a local checkout instead of
 #                                cloning it, e.g. APP_SRC_DiskHealth=~/src/DiskHealth
 #   KEEP_WORK=1                  keep the mkarchiso work directory afterwards
+#   SECUREBOOT=0                 leave Secure Boot out (the ISO then boots only with it off)
+#   SECUREBOOT_KEY, SECUREBOOT_CERT   sign with this key and certificate instead of keys/
 set -euo pipefail
 shopt -s inherit_errexit   # also stop on errors inside $(...), e.g. in build_pkg
 
@@ -52,8 +56,9 @@ command -v pacman >/dev/null ||
 
 msg "Installing the build tools"
 # grub: mkarchiso builds the UEFI boot loader with the host's grub-mkstandalone.
+# sbsigntools: scripts/secureboot.sh signs with it.
 # Each PKGBUILD's own makedepends are installed before it is built (build_pkg).
-tools=(archiso grub git base-devel)
+tools=(archiso grub git base-devel sbsigntools)
 if [[ ${LIVEREPAIR_CONTAINER-} == 1 ]]; then
     pacman -Syu --noconfirm --needed "${tools[@]}"     # a throwaway container: bring it up to date
 else
@@ -161,6 +166,10 @@ install -Dm644 "$release_info" "$profile_dir/airootfs/etc/liverepair-release"
 awk -v repo="$repo_dir" '
     /^\[core\]/ && !done { print "[liverepair]\nSigLevel = Optional TrustAll\nServer = file://" repo "\n"; done = 1 }
     { print }' "$here/profile/pacman.conf" >"$profile_dir/pacman.conf"
+if [[ ${SECUREBOOT-1} != 0 ]]; then
+    msg "Preparing for Secure Boot"
+    "$here/scripts/secureboot.sh" prepare "$work_dir/secureboot" "$profile_dir"
+fi
 
 msg "Checking that every package in packages.x86_64 exists"
 mkdir -p "$work_dir/pacman-db"
@@ -173,8 +182,24 @@ pacman --config "$profile_dir/pacman.conf" --dbpath "$work_dir/pacman-db" -Sp \
 msg "Building the ISO"
 mkarchiso -v -w "$work_dir/mkarchiso" -o "$out_dir" "$profile_dir"
 
+if [[ ${SECUREBOOT-1} != 0 ]]; then
+    msg "Signing for Secure Boot"
+    "$here/scripts/secureboot.sh" sign "$work_dir/secureboot" "$work_dir/mkarchiso"
+    msg "Building the ISO again, with the signed files"
+    # mkarchiso skips the steps its work directory says are done: all but writing the ISO
+    for step in iso._build_iso_image build._build_buildmode_iso; do
+        [[ -e $work_dir/mkarchiso/$step ]] || die "mkarchiso's work directory has no $step (has mkarchiso changed?)"
+        rm "$work_dir/mkarchiso/$step"
+    done
+    mkarchiso -v -w "$work_dir/mkarchiso" -o "$out_dir" "$profile_dir"
+fi
+
 iso=$(find "$out_dir" -maxdepth 1 -name "liverepair-$iso_version-x86_64.iso" | head -n1)
 [[ -n $iso ]] || die "mkarchiso did not produce an ISO"
+if [[ ${SECUREBOOT-1} != 0 ]]; then
+    xorriso -indev "$iso" -find /EFI/BOOT -name grubx64.efi 2>/dev/null | grep -q grubx64 ||
+        die "$(basename "$iso") was not built again with the signed files"
+fi
 cp "$release_info" "$out_dir/liverepair-$iso_version-apps.txt"
 pkglist=$work_dir/mkarchiso/iso/arch/pkglist.x86_64.txt
 [[ -e $pkglist ]] && cp "$pkglist" "$out_dir/liverepair-$iso_version-packages.txt"
@@ -201,4 +226,9 @@ bad=$(xorriso -indev "$iso" -report_el_torito plain 2>/dev/null | awk '
 grep -q "El Torito boot img : .* UEFI " < <(xorriso -indev "$iso" -report_el_torito plain 2>/dev/null) ||
     die "$(basename "$iso") has no UEFI El Torito boot image"
 
-msg "Done: $iso ($(numfmt --to=iec --suffix=B "$size"), fits on and boots from a DVD)"
+if [[ ${SECUREBOOT-1} != 0 ]]; then
+    secureboot="boots with Secure Boot on or off"
+else
+    secureboot="boots with Secure Boot off"
+fi
+msg "Done: $iso ($(numfmt --to=iec --suffix=B "$size"), fits on and boots from a DVD, $secureboot)"

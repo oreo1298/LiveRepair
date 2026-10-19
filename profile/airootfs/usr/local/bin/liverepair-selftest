@@ -66,6 +66,18 @@ sleep 15                     # let the panel and the desktop settle
 if [[ -d /sys/firmware/efi ]]; then say "INFO firmware UEFI"; else say "INFO firmware BIOS"; fi
 say "INFO boot medium: $(findmnt -no SOURCE /run/archiso/bootmnt 2>/dev/null || echo 'not mounted')"
 say "INFO kernel command line: $(</proc/cmdline)"
+if [[ -d /sys/firmware/efi ]]; then
+    # the host checks these against how it started the firmware
+    sb_state=$(sudo mokutil --sb-state 2>&1)
+    case $sb_state in
+        *"SecureBoot enabled"*) say "INFO secure boot: enabled" ;;
+        *"SecureBoot disabled"*) say "INFO secure boot: disabled" ;;
+        *) say "INFO secure boot: unknown (${sb_state//$'\n'/ })" ;;
+    esac
+    [[ -e /usr/share/liverepair/secureboot.cer ]] &&
+        say "INFO secure boot key: $(sudo mokutil --test-key /usr/share/liverepair/secureboot.cer 2>&1 | head -n1)"
+    say "INFO kernel lockdown: $(sudo cat /sys/kernel/security/lockdown 2>/dev/null || echo unknown)"
+fi
 if grep -qw copytoram=y /proc/cmdline; then
     # the system runs from RAM and the disc is no longer in use, so the drive can burn discs
     check copytoram-image test -s /run/archiso/copytoram/airootfs.sfs
@@ -114,7 +126,7 @@ if [[ $mode == full ]]; then
                 ddrescue partclone.ext4 partclone.ntfs rsync smartctl fio nvme qemu-img wimlib-imagex \
                 xorriso cdrdao mkisofs growisofs mkudffs grub-install ntfs-3g mkntfs mkfs.exfat mkfs.fat \
                 mkfs.btrfs mkfs.xfs mkfs.ext4 fls mdadm cryptsetup fsck.f2fs fsck.jfs udisksctl pkexec \
-                sgdisk parted testdisk zstd nmtui; do
+                sgdisk parted testdisk zstd nmtui mokutil; do
         if command -v "$tool" >/dev/null; then pass "tool $tool"; else fail "tool $tool missing"; fi
     done
     check python-modules python3 -c '

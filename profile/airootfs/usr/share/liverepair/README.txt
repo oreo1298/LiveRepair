@@ -42,5 +42,11 @@ password.
 Save your work (images, recovered files) to a real disk or USB drive: files
 in the live system are lost when you shut down.
 
+Secure Boot: the ISO's boot loader and kernel are signed with the key of
+whoever built it. "mokutil --sb-state" shows whether Secure Boot is on, and
+"mokutil --test-key /usr/share/liverepair/secureboot.cer" whether this PC has
+that key enrolled. "sudo mokutil --delete /usr/share/liverepair/secureboot.cer"
+removes it again (confirm at the next boot, in the blue MokManager screen).
+
 Version information: /etc/liverepair-release
 Source: https://github.com/oreo1298/LiveRepair

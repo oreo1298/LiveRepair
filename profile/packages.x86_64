@@ -118,6 +118,8 @@ testdisk
 lvm2
 hdparm
 efibootmgr
+# Secure Boot state and keys (the ISO's own: mokutil --test-key /usr/share/liverepair/secureboot.cer)
+mokutil
 usbutils
 pciutils
 lsscsi
