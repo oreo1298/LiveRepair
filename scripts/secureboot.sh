@@ -125,10 +125,12 @@ sign_file() {  # sign_file FILE: sign FILE in place with the key
 sign() {
     local work=$1 mkarchiso_work=$2
     local isofs=$mkarchiso_work/iso efiboot=$mkarchiso_work/efiboot.img embed_cfg=$mkarchiso_work/grub-embed.cfg
-    local f kernels memtest=$isofs/boot/memtest86+/memtest.efi
+    local f kernels memtest=$isofs/boot/memtest86+/memtest.efi boot_efi
     keys "$work"
-    for f in "$isofs/EFI/BOOT/BOOTX64.EFI" "$efiboot" "$embed_cfg" "$work/shim/shimx64.efi"; do
-        [[ -e $f ]] || die "$f is missing (has mkarchiso changed?)"
+    # the firmware's default boot loader, GRUB from mkarchiso: BOOTx64.EFI (FAT ignores case)
+    boot_efi=$(find "$isofs/EFI/BOOT" -maxdepth 1 -iname bootx64.efi 2>/dev/null | head -n1)
+    for f in "$boot_efi" "$efiboot" "$embed_cfg" "$work/shim/shimx64.efi"; do
+        [[ -n $f && -e $f ]] || die "${f:-$isofs/EFI/BOOT/BOOTx64.EFI} is missing (has mkarchiso changed?)"
     done
 
     msg "Building GRUB for shim ($(grub-mkstandalone --version | awk '{ print $NF }'), SBAT: $(grep -v '^sbat,' /usr/share/grub/sbat.csv | cut -d, -f1,2 | paste -sd' '))"
@@ -153,11 +155,11 @@ sign() {
     # shim takes GRUB's place as the firmware's default boot loader (BOOTX64.EFI), and starts
     # grubx64.efi, or mmx64.efi (MokManager) from the same folder. The UEFI shell stays unsigned
     # (GRUB offers it only with Secure Boot off), so does 32-bit UEFI's GRUB (no shim for it).
-    install -m644 "$work/shim/shimx64.efi" "$isofs/EFI/BOOT/BOOTX64.EFI"
+    install -m644 "$work/shim/shimx64.efi" "$boot_efi"
     install -m644 "$work/shim/mmx64.efi" "$isofs/EFI/BOOT/mmx64.efi"
     install -m644 "$cer" "$isofs/$enroll_name"
     # the EFI boot image, which firmware boots from: mkarchiso leaves room in it for this
-    mcopy -o -i "$efiboot" "$isofs/EFI/BOOT/BOOTX64.EFI" "$isofs/EFI/BOOT/grubx64.efi" \
+    mcopy -o -i "$efiboot" "$boot_efi" "$isofs/EFI/BOOT/grubx64.efi" \
         "$isofs/EFI/BOOT/mmx64.efi" ::/EFI/BOOT/
     mcopy -o -i "$efiboot" "$cer" "::/$enroll_name"
     mdir -i "$efiboot" ::/EFI/BOOT
