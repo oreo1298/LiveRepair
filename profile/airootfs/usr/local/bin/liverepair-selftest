@@ -72,6 +72,7 @@ if [[ -d /sys/firmware/efi ]]; then
     case $sb_state in
         *"SecureBoot enabled"*) say "INFO secure boot: enabled" ;;
         *"SecureBoot disabled"*) say "INFO secure boot: disabled" ;;
+        *"doesn't support Secure Boot"*) say "INFO secure boot: not supported" ;;
         *) say "INFO secure boot: unknown (${sb_state//$'\n'/ })" ;;
     esac
     [[ -e /usr/share/liverepair/secureboot.cer ]] &&

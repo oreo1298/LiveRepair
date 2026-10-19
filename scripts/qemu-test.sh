@@ -9,7 +9,8 @@
 #    them (see profile/airootfs/usr/local/bin/liverepair-selftest). Screenshots of each window.
 # 2. UEFI with Secure Boot on, without the ISO's key (a PC it has not booted on yet): shim
 #    must refuse to start GRUB and start MokManager, to enroll the key.
-# 3. UEFI with Secure Boot off: checks the desktop and the theme.
+# 3. UEFI with Secure Boot off (Microsoft's keys still in the firmware): checks the desktop and
+#    the theme.
 # 4. BIOS, "copy to RAM" boot entry (picked with simulated key presses): checks the desktop,
 #    the theme, and that the DVD is no longer in use.
 # An ISO built without Secure Boot (SECUREBOOT=0) gets the full self-test with it off instead
@@ -61,12 +62,17 @@ if xorriso -osirrox on -indev "$iso" -extract /ENROLL_THIS_KEY_IN_MOKMANAGER.cer
         { echo "error: virt-fw-vars not found (python3-virt-firmware, or: pip install virt-firmware)" >&2; exit 1; }
 fi
 
-# secureboot_firmware NAME [mok]: QEMU arguments for UEFI with Secure Boot on: Microsoft's
-# keys, as on PCs (virt-fw-vars --enroll-redhat), and with "mok", the ISO's key enrolled
+# secureboot_firmware NAME on|mok|off: QEMU arguments for UEFI firmware that has Microsoft's
+# keys, as PCs do (virt-fw-vars --enroll-redhat), with Secure Boot on, on and the ISO's key
+# enrolled (mok), or switched off
 secureboot_firmware() {
-    local vars=$tmp/$1-vars.fd mok=()
-    [[ ${2-} == mok ]] && mok=(--add-mok 605dab50-e046-4300-abb6-3dd810dd8b23 "$cert")
-    virt-fw-vars --input "$sb_vars" --enroll-redhat --secure-boot "${mok[@]}" --output "$vars" >/dev/null 2>&1 ||
+    local vars=$tmp/$1-vars.fd options=()
+    case $2 in
+        on) options=(--secure-boot) ;;
+        mok) options=(--secure-boot --add-mok 605dab50-e046-4300-abb6-3dd810dd8b23 "$cert") ;;
+        off) options=(--set-false SecureBootEnable) ;;
+    esac
+    virt-fw-vars --input "$sb_vars" --enroll-redhat "${options[@]}" --output "$vars" >/dev/null 2>&1 ||
         { echo "error: virt-fw-vars could not set up the Secure Boot keys" >&2; return 1; }
     printf '%s\n' -global driver=cfi.pflash01,property=secure,value=on \
         -drive "if=pflash,format=raw,unit=0,readonly=on,file=$sb_code" -drive "if=pflash,format=raw,unit=1,file=$vars"
@@ -85,8 +91,8 @@ screenshot() {  # screenshot NAME FILE
 # boot NAME MODE EXPECTED KEYS FIRMWARE_ARGS...
 #   MODE: the self-test to run (boot, full), or "mokmanager": shim must refuse to start GRUB
 #         and start MokManager instead, as on a PC without the ISO's key
-#   EXPECTED: what the self-test must report: BIOS, UEFI (with Secure Boot off) or UEFI+SB
-#         (Secure Boot on, and the ISO's key enrolled)
+#   EXPECTED: what the self-test must report: BIOS, UEFI (with Secure Boot off, or firmware
+#         without it) or UEFI+SB (Secure Boot on, and the ISO's key enrolled)
 #   KEYS: keys to press in the boot menu ("-" for none), e.g. "down ret"
 boot() {
     local name=$1 mode=$2 expected=$3 keys=$4; shift 4
@@ -155,14 +161,14 @@ boot() {
         echo "$name: FAILED: ${result:-no result within ${timeout}s}" >&2
         return 1
     fi
-    local firmware=${expected%+SB} secureboot=disabled
+    local firmware=${expected%+SB} secureboot="disabled\|not supported"
     [[ $expected == *+SB ]] && secureboot=enabled
     if ! grep -aq "LIVEREPAIR-SELFTEST: INFO firmware $firmware" "$log"; then
         echo "$name: FAILED: did not boot with $firmware firmware" >&2
         return 1
     fi
-    if [[ $firmware == UEFI ]] && ! grep -aq "LIVEREPAIR-SELFTEST: INFO secure boot: $secureboot" "$log"; then
-        echo "$name: FAILED: Secure Boot is not $secureboot" >&2
+    if [[ $firmware == UEFI ]] && ! grep -aq "LIVEREPAIR-SELFTEST: INFO secure boot: \($secureboot\)" "$log"; then
+        echo "$name: FAILED: Secure Boot is not ${secureboot//\\|/ or }" >&2
         return 1
     fi
     if [[ $secureboot == enabled ]] && ! grep -aq "LIVEREPAIR-SELFTEST: INFO secure boot key: .* is already enrolled" "$log"; then
@@ -176,9 +182,10 @@ status=0
 if [[ -n $cert ]]; then
     mapfile -t firmware < <(secureboot_firmware uefi-secureboot-dvd mok)
     boot uefi-secureboot-dvd full UEFI+SB - "${firmware[@]}" || status=1
-    mapfile -t firmware < <(secureboot_firmware uefi-secureboot-key-not-enrolled)
+    mapfile -t firmware < <(secureboot_firmware uefi-secureboot-key-not-enrolled on)
     boot uefi-secureboot-key-not-enrolled mokmanager - - "${firmware[@]}" || status=1
-    boot uefi-dvd boot UEFI - -bios "$ovmf" || status=1
+    mapfile -t firmware < <(secureboot_firmware uefi-secureboot-off-dvd off)
+    boot uefi-secureboot-off-dvd boot UEFI - "${firmware[@]}" || status=1
 else
     echo "The ISO has no Secure Boot key (built with SECUREBOOT=0): testing with Secure Boot off"
     boot uefi-dvd full UEFI - -bios "$ovmf" || status=1

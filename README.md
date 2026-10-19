@@ -172,7 +172,8 @@ shim, MokManager and your key's certificate in the ISO, which `mkarchiso` then b
    and APFS and checking both), and takes a screenshot of each program's window;
 2. with Secure Boot on but the key not enrolled, checking that shim refuses to start GRUB and
    starts MokManager instead;
-3. with UEFI firmware and Secure Boot off, checking the desktop and the theme;
+3. with UEFI firmware that has the keys but Secure Boot switched off, checking the desktop and
+   the theme;
 4. with BIOS firmware, choosing *copy to RAM* in the boot menu, and checking the desktop, the
    theme, and that the DVD is no longer in use.
 
