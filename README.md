@@ -38,8 +38,10 @@ cd LiveRepair
 sudo ./build.sh
 ```
 
-This installs the build tools that are missing (archiso, GRUB, sbsigntools, base-devel and what
-each program needs to build) and a `builder` user, because makepkg does not run as root. It does not update
+This installs the build tools that are missing (archiso, GRUB, sbsigntools, base-devel) and a
+`builder` user, because makepkg does not run as root. What the programs need only to be built
+(libraries, compilers) is installed for the build and removed again afterwards, as `makepkg -r`
+does. It does not update
 your system, and it compiles for any x86-64 PC whatever your own compiler settings are (some
 Arch-based systems, such as CachyOS, may be set up to compile for newer CPUs only).
 

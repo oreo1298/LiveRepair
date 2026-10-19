@@ -100,15 +100,34 @@ release_info=$work_dir/liverepair-release
 iso_version=$(date --date="@$SOURCE_DATE_EPOCH" +%Y.%m.%d)
 printf 'LiveRepair %s\n\n' "$iso_version" >"$release_info"
 
-# build_pkg DIR [CHECKOUT]: install the makedepends of DIR/PKGBUILD, build it as the builder
-# user and copy the package to the local repository; prints the package file.
+# On this computer (not in a throwaway container), what is installed only to build the packages
+# is removed again afterwards, like "makepkg -r" does: the packages installed as dependencies
+# that were not there before
+build_deps_before=$work_dir/packages-before-build
+rm -f "$build_deps_before"
+[[ ${LIVEREPAIR_CONTAINER-} == 1 ]] || pacman -Qq | sort >"$build_deps_before"
+remove_build_deps() {
+    [[ -e $build_deps_before ]] || return 0
+    local added
+    mapfile -t added < <(pacman -Qqd | sort | comm -13 "$build_deps_before" -)
+    rm -f "$build_deps_before"
+    (( ${#added[@]} )) || return 0
+    msg "Removing the ${#added[@]} packages that were installed only to build the programs"
+    pacman -Rn --noconfirm "${added[@]}" >/dev/null ||
+        printf 'warning: could not remove them: %s\n' "${added[*]}" >&2
+}
+trap remove_build_deps EXIT
+
+# build_pkg DIR [CHECKOUT]: install what DIR/PKGBUILD needs to build (its makedepends, and its
+# depends: compiled programs link against their libraries, e.g. Dendro against GTK 4), build it
+# as the builder user and copy the package to the local repository; prints the package file.
 # CHECKOUT: FastCopyLinux's PKGBUILD clones its sources itself unless FASTCOPY_SOURCE says otherwise
 build_pkg() {
     local dir=$1 checkout=${2-} name deps pkg
     name=$(cd "$dir" && runuser -u builder -- makepkg --config "$makepkg_conf" --printsrcinfo |
         awk -F ' = ' '/^pkgname = / { print $2; exit }')
     mapfile -t deps < <(cd "$dir" && runuser -u builder -- makepkg --config "$makepkg_conf" --printsrcinfo |
-        awk -F ' = ' '/^\tmakedepends(_x86_64)? = / { sub(/[<>=].*/, "", $2); print $2 }' | sort -u)
+        awk -F ' = ' '/^\t(make)?depends(_x86_64)? = / { sub(/[<>=].*/, "", $2); print $2 }' | sort -u)
     if (( ${#deps[@]} )); then
         pacman -S --noconfirm --needed --asdeps "${deps[@]}" >&2
     fi
@@ -155,6 +174,8 @@ for dir in "$here"/packages/*/; do
     printf '%-18s %-26s %s\n' "$(pacman -Qp "$pkg" | cut -d' ' -f1)" "$(pacman -Qp "$pkg" | cut -d' ' -f2)" \
         "packages/$name in LiveRepair" >>"$release_info"
 done
+
+remove_build_deps
 
 msg "Creating the local package repository"
 repo-add --quiet "$repo_dir/liverepair.db.tar.gz" "$repo_dir"/*.pkg.tar.zst
