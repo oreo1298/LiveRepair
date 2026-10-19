@@ -43,6 +43,7 @@ apps=(
     "WindowsUSBLinux    rufux               ."
     "VirtConvert        virtconvert         ."
     "ManageDisks        managedisks-git     packaging/arch"
+    "WizTreeLinux       dendro              packaging/arch"
 )
 # A single-layer DVD±R holds 4,700,372,992 bytes
 dvd_size=4700372992

@@ -39,6 +39,7 @@ linburn
 rufux
 virtconvert
 managedisks-git
+dendro
 
 # ---- Optional dependencies of the applications
 # LinBurn (ImgBurnLinux): audio CDs and BIN/CUE, mkisofs, DVD layer break, UDF

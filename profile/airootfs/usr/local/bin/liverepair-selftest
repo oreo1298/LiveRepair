@@ -123,7 +123,7 @@ if [[ $mode == full ]]; then
 
     # command line tools of the applications and the tools they call
     for tool in cnrctl recoverctl diskctl managedisks managedisks-cli tm5linux-cli fastcopy-linux \
-                virtconvert linburn rufux firefox mkfs.hfsplus fsck.hfsplus fsck.hfs mkapfs apfsck \
+                virtconvert linburn rufux dendro firefox mkfs.hfsplus fsck.hfsplus fsck.hfs mkapfs apfsck \
                 ddrescue partclone.ext4 partclone.ntfs rsync smartctl fio nvme qemu-img wimlib-imagex \
                 xorriso cdrdao mkisofs growisofs mkudffs grub-install ntfs-3g mkntfs mkfs.exfat mkfs.fat \
                 mkfs.btrfs mkfs.xfs mkfs.ext4 fls mdadm cryptsetup fsck.f2fs fsck.jfs udisksctl pkexec \
@@ -136,11 +136,14 @@ gi.require_version("Gtk", "4.0"); gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw'
     check rufux-uefi-ntfs test -s /usr/share/rufux/uefi-ntfs.img
     check tm5-memory-lock sh -c 'getcap /usr/bin/tm5linux-cli | grep -q cap_ipc_lock'
+    check dendro-version dendro --version
 
     # services, privileges and disks
     check service-diskhealthd systemctl is-active --quiet diskhealthd.service
     check service-networkmanager systemctl is-active --quiet NetworkManager.service
     check polkit-no-password pkexec --disable-internal-agent /usr/bin/true
+    # Dendro's "Scan as administrator" (its read-only helper, through pkexec)
+    check dendro-admin-scan-no-password pkcheck --action-id io.github.oreo1298.Dendro.scan --process $$
     check sudo-no-password sudo -n true
     check udisks udisksctl status
     check no-automount sh -c '! findmnt -rno SOURCE | grep -q "^/dev/[sv]d"'
@@ -195,13 +198,14 @@ from gi.repository import Gtk, Adw'
     fi
 
     # the desktop launchers and the applications' windows
-    for app in CloneAndRecover RecoverAll DiskHealth ManageDisks TM5Linux FastCopyLinux LinBurn Rufux VirtConvert; do
+    for app in CloneAndRecover RecoverAll DiskHealth ManageDisks Dendro TM5Linux FastCopyLinux LinBurn Rufux VirtConvert; do
         check "launcher-$app" test -x "$HOME/Desktop/io.github.oreo1298.$app.desktop"
     done
     gui cloneandrecover cloneandrecover
     gui recoverall recoverall
     gui diskhealth diskhealth
     gui managedisks managedisks
+    gui dendro dendro
     gui tm5linux tm5linux
     gui fastcopy-linux fastcopy-linux
     gui linburn linburn

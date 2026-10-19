@@ -9,6 +9,7 @@ programs preinstalled and ready to use:
 | **RecoverAll** | [RecoverAll](https://github.com/oreo1298/RecoverAll) | Recover deleted files, lost partitions and photos; repair and image disks |
 | **DiskHealth** | [DiskHealth](https://github.com/oreo1298/DiskHealth) | S.M.A.R.T., health, benchmarks and surface tests for HDDs, SSDs, NVMe and flash drives |
 | **ManageDisks** | [ManageDisks](https://github.com/oreo1298/ManageDisks) | Disk and partition manager (GUI and a diskpart-style CLI), including Mac HFS+ and APFS |
+| **Dendro** | [WizTreeLinux](https://github.com/oreo1298/WizTreeLinux) | WizTree-style disk space analyzer: which folders, files and file types use the space, with a treemap |
 | **TM5 for Linux** | [TM5Linux](https://github.com/oreo1298/TM5Linux) | RAM stability test with TestMem5 configs (Extreme1 by anta777 and others) |
 | **FastCopy Linux** | [FastCopyLinux](https://github.com/oreo1298/FastCopyLinux) | Fast file copy, sync, move and delete with verification |
 | **LinBurn** | [ImgBurnLinux](https://github.com/oreo1298/ImgBurnLinux) | ImgBurn-style CD/DVD/Blu-ray burning, reading, building and verifying |
