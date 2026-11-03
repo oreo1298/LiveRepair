@@ -62,15 +62,21 @@ if xorriso -osirrox on -indev "$iso" -extract /ENROLL_THIS_KEY_IN_MOKMANAGER.cer
         { echo "error: virt-fw-vars not found (python3-virt-firmware, or: pip install virt-firmware)" >&2; exit 1; }
 fi
 
+# The revocations PCs have (SbatLevel, which shim checks GRUB's SBAT generation against;
+# Windows updates and newer Linux boot media raise it): those of November 2025. A GRUB that
+# declares an older generation is refused with "Verification failed", whatever keys are enrolled.
+sbat_level="sbat,1,2025112400"
+printf '%s\nshim,4\ngrub,6\n' "$sbat_level" >"$tmp/sbatlevel"
+
 # secureboot_firmware NAME on|mok|off: QEMU arguments for UEFI firmware that has Microsoft's
-# keys, as PCs do (virt-fw-vars --enroll-redhat), with Secure Boot on, on and the ISO's key
-# enrolled (mok), or switched off
+# keys and those revocations, as PCs do (virt-fw-vars --enroll-redhat), with Secure Boot on, on
+# and the ISO's key enrolled (mok), or switched off
 secureboot_firmware() {
-    local vars=$tmp/$1-vars.fd options=()
+    local vars=$tmp/$1-vars.fd options=(--set-sbat-level "$tmp/sbatlevel")
     case $2 in
-        on) options=(--secure-boot) ;;
-        mok) options=(--secure-boot --add-mok 605dab50-e046-4300-abb6-3dd810dd8b23 "$cert") ;;
-        off) options=(--set-false SecureBootEnable) ;;
+        on) options+=(--secure-boot) ;;
+        mok) options+=(--secure-boot --add-mok 605dab50-e046-4300-abb6-3dd810dd8b23 "$cert") ;;
+        off) options+=(--set-false SecureBootEnable) ;;
     esac
     virt-fw-vars --input "$sb_vars" --enroll-redhat "${options[@]}" --output "$vars" >/dev/null 2>&1 ||
         { echo "error: virt-fw-vars could not set up the Secure Boot keys" >&2; return 1; }
@@ -173,6 +179,10 @@ boot() {
     fi
     if [[ $secureboot == enabled ]] && ! grep -aq "LIVEREPAIR-SELFTEST: INFO secure boot key: .* is already enrolled" "$log"; then
         echo "$name: FAILED: the live system does not see its Secure Boot key enrolled" >&2
+        return 1
+    fi
+    if [[ $secureboot == enabled ]] && ! grep -aq "LIVEREPAIR-SELFTEST: INFO SBAT revocations: $sbat_level" "$log"; then
+        echo "$name: FAILED: the firmware did not have the revocations ($sbat_level) the test gave it" >&2
         return 1
     fi
     echo "$name: passed"

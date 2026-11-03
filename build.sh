@@ -250,7 +250,13 @@ grep -q "El Torito boot img : .* UEFI " < <(xorriso -indev "$iso" -report_el_tor
 
 if [[ ${SECUREBOOT-1} != 0 ]]; then
     secureboot="boots with Secure Boot on or off"
+    if [[ -s $work_dir/secureboot/warnings ]]; then
+        secureboot+=" (but see the warning below)"
+    fi
 else
     secureboot="boots with Secure Boot off"
 fi
 msg "Done: $iso ($(numfmt --to=iec --suffix=B "$size"), fits on and boots from a DVD, $secureboot)"
+if [[ ${SECUREBOOT-1} != 0 && -s $work_dir/secureboot/warnings ]]; then
+    sed 's/^/warning: /' "$work_dir/secureboot/warnings" >&2
+fi

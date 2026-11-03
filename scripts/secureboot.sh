@@ -116,6 +116,23 @@ prepare() {
     install -Dm644 "$cer" "$profile/airootfs/usr/share/liverepair/secureboot.cer"
 }
 
+# build_grub SBAT_CSV OUTPUT EMBEDDED_CFG: mkarchiso's GRUB (same configuration), except that it
+# does not leave the checking of what it starts to the firmware (--disable-shim-lock) but asks
+# shim, which knows the MOK list
+build_grub() {
+    grub-mkstandalone -O x86_64-efi \
+        --modules="${grub_modules[*]}" \
+        --locales="en@quot" \
+        --themes="" \
+        --sbat="$1" \
+        -o "$2" "boot/grub/grub.cfg=$3"
+}
+
+sbat_of() {  # sbat_of FILE: the SBAT entries of an EFI binary, e.g. "grub,6 grub.arch,1"
+    objcopy -O binary --only-section=.sbat "$1" /dev/stdout | tr -d '\0' | grep -v '^sbat,' |
+        cut -d, -f1,2 | paste -sd' '
+}
+
 sign_file() {  # sign_file FILE: sign FILE in place with the key
     sbsign --key "$key" --cert "$crt" --output "$1.signed" "$1" >/dev/null
     sbverify --cert "$crt" "$1.signed" >/dev/null || die "the signature of $1 does not verify"
@@ -133,15 +150,27 @@ sign() {
         [[ -n $f && -e $f ]] || die "${f:-$isofs/EFI/BOOT/BOOTx64.EFI} is missing (has mkarchiso changed?)"
     done
 
-    msg "Building GRUB for shim ($(grub-mkstandalone --version | awk '{ print $NF }'), SBAT: $(grep -v '^sbat,' /usr/share/grub/sbat.csv | cut -d, -f1,2 | paste -sd' '))"
-    # mkarchiso's GRUB (same configuration), except that it does not leave the checking of what
-    # it starts to the firmware (--disable-shim-lock) but asks shim, which knows the MOK list
-    grub-mkstandalone -O x86_64-efi \
-        --modules="${grub_modules[*]}" \
-        --locales="en@quot" \
-        --themes="" \
-        --sbat=/usr/share/grub/sbat.csv \
-        -o "$isofs/EFI/BOOT/grubx64.efi" "boot/grub/grub.cfg=$embed_cfg"
+    msg "Building GRUB for shim ($(grub-mkstandalone --version | awk '{ print $NF }'))"
+    # GRUB's SBAT generation says which security fixes it has. shim refuses a GRUB whose
+    # generation the PC's revocation list (SbatLevel: Windows updates and newer Linux boot media
+    # raise it) has revoked, with "Verification failed: (0x1A) Security Violation", whatever keys
+    # are enrolled. GRUB knows the generation it was built at, and Arch's sbat.csv can lag behind
+    # it (GRUB 2.16 is at 6, its sbat.csv said 4), so GRUB declares the higher of the two.
+    local log=$work/grub-mkstandalone.log generation csv_generation
+    cp /usr/share/grub/sbat.csv "$work/sbat.csv"
+    build_grub "$work/sbat.csv" "$isofs/EFI/BOOT/grubx64.efi" "$embed_cfg" 2>"$log" ||
+        { cat "$log" >&2; die "grub-mkstandalone failed"; }
+    generation=$(sed -n 's/.*build-time Global SBAT level \([0-9][0-9]*\).*/\1/p' "$log" | head -n1)
+    csv_generation=$(sed -n 's/^grub,\([0-9][0-9]*\),.*/\1/p' "$work/sbat.csv")
+    if [[ -n $generation && -n $csv_generation ]] && (( generation > csv_generation )); then
+        msg "GRUB was built at SBAT generation $generation, Arch's sbat.csv says $csv_generation: using $generation"
+        sed -i "s/^grub,$csv_generation,/grub,$generation,/" "$work/sbat.csv"
+        build_grub "$work/sbat.csv" "$isofs/EFI/BOOT/grubx64.efi" "$embed_cfg"
+    else
+        cat "$log" >&2
+    fi
+    msg "GRUB's SBAT: $(sbat_of "$isofs/EFI/BOOT/grubx64.efi"), shim's: $(sbat_of "$work/shim/shimx64.efi")"
+    check_revocations "$work" "$isofs/EFI/BOOT/grubx64.efi"
 
     msg "Signing GRUB, the kernel and Memtest86+"
     kernels=("$isofs"/*/boot/x86_64/vmlinuz-*)
@@ -163,6 +192,34 @@ sign() {
         "$isofs/EFI/BOOT/mmx64.efi" ::/EFI/BOOT/
     mcopy -o -i "$efiboot" "$cer" "::/$enroll_name"
     mdir -i "$efiboot" ::/EFI/BOOT
+}
+
+# check_revocations WORK GRUB: compare GRUB and shim with the newest revocation shim's
+# maintainers have published (when it can be downloaded). One they do not pass means that PCs
+# which receive it will refuse this ISO with Secure Boot on: written to WORK/warnings.
+check_revocations() {
+    local work=$1 grub=$2 list level component need have
+    rm -f "$work/warnings"
+    list=$(curl -fsSL --max-time 30 https://raw.githubusercontent.com/rhboot/shim/main/SbatLevel_Variable.txt) ||
+        { msg "Could not download shim's list of revocations, not checking against it"; return 0; }
+    # the last "sbat,1,<date>" block of the list
+    level=$(awk '/^sbat,1,[0-9]+$/ { block = $0; next } block && /^[a-z0-9._-]+,[0-9]+$/ { block = block " " $0; next }
+                 block { last = block; block = "" } END { print (block ? block : last) }' <<<"$list")
+    msg "Newest published revocation: $level"
+    for component in grub shim; do
+        need=$(tr ' ' '\n' <<<"$level" | sed -n "s/^$component,//p")
+        if [[ $component == grub ]]; then
+            have=$(sbat_of "$grub" | tr ' ' '\n' | sed -n 's/^grub,//p')
+        else
+            have=$(sbat_of "$work/shim/shimx64.efi" | tr ' ' '\n' | sed -n 's/^shim,//p')
+        fi
+        if [[ -n $need && -n $have ]] && (( have < need )); then
+            printf '%s is at SBAT generation %s, but the newest published revocation (%s) requires %s: PCs that receive it will refuse this ISO with Secure Boot on, until %s\n' \
+                "$component" "$have" "${level%% *}" "$need" \
+                "$([[ $component == grub ]] && echo "Arch's GRUB has those fixes (then build again)" || echo "this script uses a newer shim")" \
+                | tee -a "$work/warnings" | sed 's/^/warning: /' >&2
+        fi
+    done
 }
 
 case ${1-} in

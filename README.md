@@ -115,8 +115,14 @@ Good to know:
   example "Allow Microsoft 3rd Party UEFI CA"). Otherwise, turn Secure Boot off.
 - With Secure Boot on, the boot menu has no "UEFI Shell" entry (it is not signed). 32-bit UEFI
   tablets boot only with Secure Boot off.
-- Like any current Linux installation medium, shim may add outdated, vulnerable Linux boot
-  loaders to the PC's list of blocked ones (SBAT), as Windows updates do too.
+- **"Verification failed" again although the key is enrolled** means the PC has revoked the ISO's
+  GRUB. Every boot loader carries an SBAT generation, the security fixes it has, and PCs keep a
+  list of revoked generations (SBAT), which Windows updates and newer Linux boot media raise.
+  Build the ISO again: it gets the newest GRUB Arch has, and the build ends with a warning if a
+  revocation has been published that this GRUB does not pass yet (then build again once Arch
+  updates GRUB). To see a PC's list, start LiveRepair with Secure Boot off and run
+  `mokutil --list-sbat-revocations`. LiveRepair's own shim may add to that list too, like any
+  current Linux boot medium.
 
 ## Using it
 

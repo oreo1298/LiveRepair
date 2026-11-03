@@ -78,6 +78,8 @@ if [[ -d /sys/firmware/efi ]]; then
     [[ -e /usr/share/liverepair/secureboot.cer ]] &&
         say "INFO secure boot key: $(sudo mokutil --test-key /usr/share/liverepair/secureboot.cer 2>&1 | head -n1)"
     say "INFO kernel lockdown: $(sudo cat /sys/kernel/security/lockdown 2>/dev/null || echo unknown)"
+    # the PC's list of revoked boot loader generations, which shim checks GRUB against
+    say "INFO SBAT revocations: $(sudo mokutil --list-sbat-revocations 2>&1 | paste -sd' ')"
 fi
 if grep -qw copytoram=y /proc/cmdline; then
     # the system runs from RAM and the disc is no longer in use, so the drive can burn discs
