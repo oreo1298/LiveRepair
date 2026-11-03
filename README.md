@@ -120,9 +120,8 @@ Good to know:
   list of revoked generations (SBAT), which Windows updates and newer Linux boot media raise.
   Build the ISO again: it gets the newest GRUB Arch has, and the build ends with a warning if a
   revocation has been published that this GRUB does not pass yet (then build again once Arch
-  updates GRUB). To see a PC's list, start LiveRepair with Secure Boot off and run
-  `mokutil --list-sbat-revocations`. LiveRepair's own shim may add to that list too, like any
-  current Linux boot medium.
+  updates GRUB). Starting LiveRepair once with Secure Boot off empties that list again (shim does
+  that, so that a PC can always be recovered), until Windows applies the revocations again.
 
 ## Using it
 
